@@ -26,7 +26,7 @@ export default function Deploy() {
   const [ok, setOk] = useState(false);
   return (
     <div className="page">
-      <PageHeader title="Deploy a cloud" sub="Your own Creavia Cloud on your Cloudflare account: posts, files, voices, publishing, analytics and the hosted MCP, for you and your team. Free to start." scene={false} />
+      <PageHeader title="Deploy a cloud" sub="Your own Creavia Cloud on your Cloudflare account: posts, files, voices, publishing, analytics and the hosted MCP, for you and your team. Cloudflare Workers Paid ($5 a month); storage and the database start free." scene={false} />
       <div className="cr-deploy">
         <ol className="cr-steps">
           <Step n={1} title="Make a free database" done={clicked.db}>
@@ -34,7 +34,7 @@ export default function Deploy() {
             <button className="sm ghost" onClick={() => { openExternal("https://console.neon.tech/signup"); setClicked((c) => ({ ...c, db: true })); }}><Database size={15} /> Open Neon</button>
           </Step>
           <Step n={2} title="Deploy to Cloudflare" done={clicked.cf}>
-            <p>One click copies Creavia into your GitHub, makes the storage bucket and deploys it. When it asks, paste the database string and choose two long random secrets (it explains each). Updates then deploy by themselves.</p>
+            <p>One click copies Creavia into your GitHub, makes the storage bucket and deploys it (Workers Paid plan, $5 a month). When it asks, paste the database string and choose two long random secrets (it explains each). Updates then deploy by themselves.</p>
             <button className="cr-cf" onClick={() => { openExternal(DEPLOY); setClicked((c) => ({ ...c, cf: true })); }}><CloudArrowUp size={18} weight="fill" /> Deploy to Cloudflare</button>
           </Step>
           <Step n={3} title="Connect this app">

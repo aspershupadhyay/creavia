@@ -41,6 +41,7 @@ git clone https://github.com/aspershupadhyay/creavia && cd creavia && npm instal
 npm run cloud:deploy
 ```
 
+A studio runs on Cloudflare Workers Paid ($5 a month); storage (R2) and the database (Neon) start free.
 [docs/DEPLOY.md](docs/DEPLOY.md) covers both, and the optional extras (R2 keys, YouTube, Instagram, cloud GPUs).
 
 ## Models are never shipped

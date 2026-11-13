@@ -1,7 +1,7 @@
 # Deploy your Creavia Cloud
 
-Your studio online, on your own Cloudflare account: free to start (Workers free plan, R2's free 10 GB, Neon's free
-Postgres). Three steps; the app's *Deploy a cloud* page walks through the same.
+Your studio online, on your own Cloudflare account. Cost: **Cloudflare Workers Paid, $5 a month** (the studio is a
+~6 MB Worker with long-running requests; the free plan allows 3 MB), with R2's free 10 GB and Neon's free Postgres. Three steps; the app's *Deploy a cloud* page walks through the same.
 
 ## 1. A database
 

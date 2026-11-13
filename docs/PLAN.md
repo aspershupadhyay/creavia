@@ -18,7 +18,7 @@ cloud in one click, models they choose. Decisions and what's left, in order. Tic
   to the user's studio as its GPU (`engine/launcher.py`: tunnel + heartbeat, like Colab).
 - **MCP, local or hosted.** Local: `127.0.0.1:7377/mcp`, token, refuses foreign Origins; its own `local_*` tools plus
   the studio's, forwarded with a model key the app makes for itself. Hosted: the studio's `/api/mcp` with OAuth.
-- **The cloud stays on Cloudflare** (Workers + R2) with Postgres on Neon. One-click deploy: the Deploy to Cloudflare
+- **The cloud stays on Cloudflare** (Workers Paid, $5/month: a ~6 MB Worker, over the free 3 MB) + R2, Postgres on Neon. One-click deploy: the Deploy to Cloudflare
   button (`cloud/package.json` scripts, `.dev.vars.example`), or `npm run cloud:deploy` (`cloud/scripts/deploy.mjs`).
   A fresh studio makes its own tables (`lib/schema.ts` from `db/*.sql`, `ensureSchema`).
 
@@ -53,5 +53,8 @@ cloud in one click, models they choose. Decisions and what's left, in order. Tic
 5. **Native file paths for big uploads:** drag a 2 GB file in and Rust streams it from disk with real progress, instead
    of reading it into the web view.
 6. **Linux keychain** (Secret Service) instead of the 0600 file; launch at login; deep links (`creavia://`) for OAuth.
-7. **Port the cron jobs** (VoiceBox's `sweep.yml`, the live timer) to Cloudflare Cron Triggers so a one-click studio
+7. **A smaller Worker** (split rarely used routes, lazy-load heavy libraries) to fit the free plan's 3 MB.
+8. **Commit a lockfile** (`npm install` at the root, from a machine that reaches cdn.sheetjs.com): OpenNext finds the
+   workspace root by it; CI and Cloudflare make one on install meanwhile.
+9. **Port the cron jobs** (VoiceBox's `sweep.yml`, the live timer) to Cloudflare Cron Triggers so a one-click studio
    needs no GitHub Actions.
