@@ -23,12 +23,22 @@ jobs:
         run: |
           npm i --no-save playwright-core@1.49.1 | Out-Null
           $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Creavia", "$env:LOCALAPPDATA\Programs\Creavia" -Filter creavia.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          # the app passes its own WebView2 flags (which beat the env variable); the policy key beats both
+          $k = "HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $k -Force | Out-Null
+          New-ItemProperty -Path $k -Name "creavia.exe" -Value "--remote-debugging-port=9222" -Force | Out-Null
           $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
           $p = Start-Process -FilePath $exe.FullName -PassThru
+          New-Item -ItemType Directory -Force probe | Out-Null
           node scripts/winprobe.mjs probe
           $p.Refresh(); Write-Host "exited: $($p.HasExited)"
           Get-Process | Where-Object { $_.Name -match "creavia|msedgewebview2" } | Format-Table Name, Id, @{n="MB";e={[int]($_.WorkingSet64/1MB)}} | Out-String | Write-Host
-          Get-ChildItem "$env:LOCALAPPDATA\studio.creavia.app" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length | Out-String | Write-Host
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("probe\desktop.png")
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: probe, path: probe }
