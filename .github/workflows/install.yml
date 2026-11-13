@@ -5,9 +5,9 @@ name: Install
 on:
   push:
     branches: [main]
-    paths: ["install.sh", "install.ps1", ".github/workflows/install.yml"]
+    paths: ["install.sh", "install.ps1", ".github/workflows/install.yml", "scripts/winprobe.mjs"]
   pull_request:
-    paths: ["install.sh", "install.ps1", ".github/workflows/install.yml"]
+    paths: ["install.sh", "install.ps1", ".github/workflows/install.yml", "scripts/winprobe.mjs"]
   workflow_run:
     workflows: [Desktop]
     types: [completed]
@@ -81,3 +81,16 @@ jobs:
           $p = Start-Process -FilePath $exe.FullName -ArgumentList "--self-check" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "self-check failed ($($p.ExitCode))" }
           Write-Host "self-check passed"
+          "exe=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+        id: installed
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: The window opens, shows Creavia, stays small, and heals a crash
+        shell: pwsh
+        # --self-check never draws the page; 0.1.1 passed it and still crashed on open (docs/FEEDBACK.md)
+        run: |
+          npm i --no-save playwright-core@1.49.1 | Out-Null
+          $env:CREAVIA_WEBVIEW_DEBUG_PORT = "9222"
+          $env:CREAVIA_HOME = "$env:RUNNER_TEMP\creavia-open"
+          Start-Process -FilePath "${{ steps.installed.outputs.exe }}"
+          node scripts/winprobe.mjs probe
