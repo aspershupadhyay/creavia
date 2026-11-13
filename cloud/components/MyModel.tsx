@@ -1,0 +1,831 @@
+"use client";
+// Your own voice model, end to end: collect 30-60 minutes of you (read along or upload), train it on the GPU worker
+// with one click, then benchmark it against your cloned voices. One dataset and one model per person: each of you picks
+// your own name, and both models stay available to everyone (the myvoice engine, voice = the name).
+import { ArrowRight, CaretLeft, CaretRight, Copy, DownloadSimple, Microphone, Stop, TrashSimple, UploadSimple, ArrowLeft } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { READ_ALONG } from "@/lib/readalong";
+import { api, fmtS, pct, simClass, matchClass, uploadFile, type Job, type MyVoice } from "./api";
+import { Info } from "./Info";
+import { VoiceGlyph } from "./art";
+import { useDialog } from "./Dialog";
+import JobProgress from "./JobProgress";
+import { useResumeJob } from "./jobs";
+import LineRow from "./LineRow";
+import Player from "./Player";
+import { FilePreview, PauseButton, SavedTakes, startRecording, VoiceOrb, type Recording } from "./Recorder";
+import { useStatus } from "./Shell";
+import Link from "next/link";
+import { PageHeader } from "./ui";
+import { Select } from "./pop";
+
+type Part = { job: string; clips: number; minutes: number; input_minutes: number; dropped: Record<string, number>; created: number;
+  sources: { name: string; duration: number; clips: number }[]; auto_train?: { job?: string; skipped?: string } };
+type Dataset = { name: string; parts: Part[]; clips: number; minutes: number };
+type Model = { name: string; job: string; created: number; clips: number; minutes: number; epochs: number; loss: number;
+  sample: { text: string; duration: number } | null; sample_url?: string | null; best_epoch?: number; flow_clips?: number;
+  listening?: { epoch: number; match: number | null; similarity: number | null; score: number | null }[] };
+type Bench = { target: string | null; candidates: { label: string; engine: string; voice: string; match?: number | null; similarity?: number | null; mos?: number | null; rtf?: number; score?: number | null; lines?: string[]; error?: string }[] };
+
+const MILESTONES = [[15, "works"], [30, "good"], [60, "best"]] as const;
+const TEST = `Okay, let's talk about why your app feels slow, even though the server is fast.
+Here's the twist: the database was never the bottleneck. It was the network all along.
+Honestly? I didn't believe it either, until I measured it.
+Version three point two cut cold starts from nine hundred milliseconds to about eighty.
+So, should you rewrite everything in Rust? Probably not. Should you profile first? Always.
+Thanks for watching, and I'll see you in the next one.`;
+
+type Polled = Job & { part?: Part; benchmark?: Bench; model?: Model | null; kvoice_saved?: unknown; myvoice?: MyVoice | null };
+
+function usePoll(onDone?: (j: Polled) => void) {
+  const [job, setJob] = useState<Polled | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const done = useRef(onDone);
+  done.current = onDone;
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const poll = useCallback(async (id: string) => {
+    try {
+      const j = await api<Polled>(`jobs/${id}`);
+      setJob(j);
+      // done on the worker isn't done until the result is stored: the dataset part, the trained model, or the library entry
+      const kind = j.kind as string;
+      const finished = j.status === "done" && (kind === "dataset" ? !!j.part : kind === "train" ? !!j.model : kind === "voicewalk" ? !!j.kvoice_saved
+        : kind === "reference" ? !!j.myvoice : !!j.library);
+      if (["queued", "running"].includes(j.status) || (j.status === "done" && !finished)) timer.current = setTimeout(() => poll(id), 2000);
+      else if (j.status === "done") done.current?.(j);
+    } catch {
+      timer.current = setTimeout(() => poll(id), 5000);
+    }
+  }, []);
+  return { job, start: (j: Job) => { setJob(j); timer.current = setTimeout(() => poll(j.id), 1200); } };
+}
+
+/** Jobs for this person that were started anywhere (MCP, another device, auto-train): show them here, live. Checks the
+ * worker's job list now and every 20 s while nothing is being followed; a finished dataset batch is stored on the way. */
+function useWorkerJobs(kind: "dataset" | "train", name: string, following: boolean, start: (j: Polled) => void, onStored?: () => void,
+  only?: (j: Job & { train_engine?: string }) => boolean) {
+  const seen = useRef(new Set<string>());
+  const fns = useRef({ start, onStored });
+  fns.current = { start, onStored };
+  useEffect(() => {
+    if (following || !name) return;
+    let live = true;
+    const look = async () => {
+      const r = await api<{ jobs: (Job & { voice?: string })[] }>("jobs").catch(() => null);
+      if (!live || !r) return;
+      const mine = r.jobs.filter((j) => (j.kind as string) === kind && j.voice === name && (!only || only(j)));
+      const busy = mine.find((j) => ["queued", "running"].includes(j.status));
+      if (busy) { fns.current.start(await api<Polled>(`jobs/${busy.id}`)); return; }
+      // done on the worker but maybe never stored (started elsewhere, nobody waited for it): store it now, quietly
+      const fresh = mine.filter((j) => j.status === "done" && !seen.current.has(j.id));
+      fresh.forEach((j) => seen.current.add(j.id));
+      if (kind === "dataset" && fresh.length) {
+        await Promise.all(fresh.map((j) => api(`jobs/${j.id}`).catch(() => null)));
+        if (live) fns.current.onStored?.();
+      }
+    };
+    look();
+    const t = setInterval(look, 20_000);
+    return () => { live = false; clearInterval(t); };
+  }, [kind, name, following]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+type Pending = { file: File; forget?: () => void; take?: string };
+
+function Collect({ name, open, onClose, onAdded, script }: { name: string; open: boolean; onClose: () => void; onAdded: (trainJob?: string) => void;
+  script?: string[] | null }) {
+  // the voice coach's script for this voice when there is one, else the general read-along
+  const LINES = script?.length ? script : READ_ALONG;
+  const at = `vb-read-${name}${script?.length ? "-coach" : ""}`;
+  const { status } = useStatus();
+  const { toast } = useDialog();
+  const [tab, setTab] = useState<"read" | "upload">("read");
+  const [i, setI] = useState(0);
+  const [rec, setRec] = useState<Recording | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [secs, setSecs] = useState(0);
+  // takes and files waiting for you to listen and keep them: nothing is sent until you press Add to dataset
+  const [pending, setPending] = useState<Pending[]>([]);
+  const [up, setUp] = useState<number | null>(null);
+  const [err, setErr] = useState("");
+  // train on everything collected as soon as a batch is stored (the server starts it, so the tab can close)
+  const [auto, setAuto] = useState(true);
+  useEffect(() => { try { setAuto(localStorage.getItem("vb-autotrain") !== "0"); } catch {} }, []);
+  const sent = useRef<Pending[]>([]); // in the worker's hands: dropped from this device once they're in the dataset
+  const { job, start } = usePoll((j) => {
+    const p = j.part;
+    const at = p?.auto_train;
+    toast(`Added ${p?.clips ?? 0} clips (${p?.minutes ?? 0} min) to ${name}${at?.job ? ". Training started" : at?.skipped ? `. Not training yet: ${at.skipped}` : ""}`, "ok");
+    sent.current.forEach((x) => x.forget?.()); sent.current = [];
+    onAdded(at?.job);
+  });
+  useEffect(() => {
+    // a failed batch: give the recordings back, so nothing has to be recorded again
+    if (job && ["error", "cancelled"].includes(job.status) && sent.current.length) {
+      const back = sent.current;
+      sent.current = [];
+      setPending((p) => [...back, ...p]);
+    }
+  }, [job]);
+
+  useEffect(() => { try { setI(Math.min(Number(localStorage.getItem(at)) || 0, LINES.length - 1)); } catch {} }, [at, LINES.length]);
+  useEffect(() => { try { localStorage.setItem(at, String(i)); } catch {} }, [i, at]);
+  useEffect(() => { if (script?.length) setTab("read"); }, [script]);
+  useEffect(() => {
+    if (!rec) return;
+    const t = setInterval(() => setSecs(rec.elapsed()), 250);
+    return () => clearInterval(t);
+  }, [rec]);
+  useEffect(() => () => { rec?.stream.getTracks().forEach((t) => t.stop()); }, [rec]);
+  useEffect(() => {
+    if (!rec) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input, textarea, select")) return;
+      if ((e.key === " " || e.key === "ArrowRight") && !rec.paused) { e.preventDefault(); setI((x) => (x + 1) % LINES.length); }
+      if (e.code === "KeyP" && e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); if (rec.paused) { rec.resume(); setPaused(false); } else { rec.pause(); setPaused(true); } }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rec]);
+
+  async function begin() {
+    setErr("");
+    try {
+      // saved to this device every second: a refresh mid-session keeps it (offered back below the card)
+      const r = await startRecording(`dataset:${name}`, `line ${i + 1}`);
+      setSecs(0); setPaused(false); setRec(r);
+    } catch (e) {
+      setErr((e as Error).name === "NotAllowedError" ? "Allow the microphone for this site, then try again." : (e as Error).message);
+    }
+  }
+  async function finish() {
+    if (!rec) return;
+    const r = rec;
+    setRec(null); setPaused(false);
+    const f = await r.stop();
+    if (r.elapsed() < 3) { r.forget(); toast("That take was under 3 seconds, so it wasn't kept", "bad"); return; }
+    setPending((p) => [...p, { file: f, forget: r.forget, take: r.take.id }]);
+  }
+  function drop(k: number) {
+    setPending((p) => { p[k]?.forget?.(); return p.filter((_, j) => j !== k); });
+  }
+  async function send() {
+    const list = pending.slice(0, 20);
+    if (!list.length) return;
+    setErr("");
+    try {
+      const total = list.reduce((a, x) => a + x.file.size, 0) || 1;
+      let done = 0;
+      const keys: { key: string; name: string }[] = [];
+      for (const x of list) {
+        const f = x.file;
+        keys.push({ key: await uploadFile(f, f.name.replace(/[^A-Za-z0-9._-]/g, "_"), (fr) => setUp((done + fr * f.size) / total)), name: f.name });
+        done += f.size;
+      }
+      setUp(null);
+      const j = await api<Job>("jobs", { body: { kind: "dataset", name, sources: keys, label: `Dataset · ${name}`, auto_train: auto } });
+      sent.current = list;
+      setPending((p) => p.slice(list.length));
+      start(j);
+    } catch (e) {
+      setUp(null);
+      // the takes stay in the list (and on this device) until a batch is in the dataset: nothing to record again
+      setErr(`${(e as Error).message}. Your recordings are safe here: press Add again.`);
+    }
+  }
+  const busy = !!job && ["queued", "running"].includes(job.status);
+  useResumeJob<Polled>(["dataset"], (j) => { if ((j as Polled & { voice?: string }).voice === name) start(j); });
+  useWorkerJobs("dataset", name, busy, start, () => onAdded());
+  // a voice that already has recordings doesn't need this card: it opens from "Add recordings" (and stays while working)
+  if (!open && !busy && up === null && !pending.length && !rec && job?.status !== "error") return null;
+
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Add recordings</h2>
+        <div className="row" style={{ gap: 8 }}>{open && <button className="ghost xs" onClick={onClose}>Close</button>}<div className="seg"><button className={tab === "read" ? "on" : ""} onClick={() => setTab("read")}>Read along</button><button className={tab === "upload" ? "on" : ""} onClick={() => setTab("upload")}>Upload</button></div></div>
+      </div>
+      {tab === "read" ? (
+        <>
+          <HowItWorks>Record a session of 5-15 minutes at your natural YouTube pace. <kbd>space</kbd> moves to the next line,
+            <kbd>Shift</kbd> + <kbd>P</kbd> pauses and resumes (take a sip of water, the take waits). Stop when you&apos;re done: you listen first, nothing is sent until you add it.</HowItWorks>
+          {!!script?.length && <p className="tiny" style={{ margin: "0 0 8px", color: "var(--ok)" }}>Reading the coach&apos;s script for {name}: aimed at what the voice is weakest at.</p>}
+          <div className={`read-card big ${rec && !paused ? "live" : ""}`}>{LINES[i]}</div>
+          <div className="row between" style={{ flexWrap: "wrap", gap: 10 }}>
+            <div className="row" style={{ gap: 4 }}>
+              <button className="icon-btn" aria-label="Previous line" onClick={() => setI((x) => (x - 1 + LINES.length) % LINES.length)}><CaretLeft size={16} /></button>
+              <span className="mono tiny dim">{i + 1} / {LINES.length}</span>
+              <button className="icon-btn" aria-label="Next line" onClick={() => setI((x) => (x + 1) % LINES.length)}><CaretRight size={16} /></button>
+            </div>
+            {rec ? (
+              <div className="row" style={{ gap: 10 }}>
+                <VoiceOrb stream={rec.stream} size={64} paused={paused} /><span className="mono">{fmtS(secs)}{paused ? " · paused" : ""}</span>
+                <PauseButton rec={rec} paused={paused} onChange={setPaused} />
+                <button onClick={finish}><Stop size={15} weight="fill" /> Stop</button>
+              </div>
+            ) : <button onClick={begin} disabled={up !== null}><Microphone size={15} weight="fill" /> {pending.length ? "Record another session" : "Start a session"}</button>}
+          </div>
+          {!rec && <div style={{ marginTop: 12 }}><SavedTakes scope={`dataset:${name}`} live={pending.map((p) => p.take).filter(Boolean).join(",") || null} useLabel="Review" onUse={(f, t) => {
+            if (pending.some((p) => p.take === t.id)) return;
+            setPending((p) => [...p, { file: f, take: t.id, forget: () => import("./takes").then((m) => m.dropTake(t.id)) }]);
+          }} /></div>}
+        </>
+      ) : (
+        <>
+          <HowItWorks>Long recordings of just you talking work great: raw voiceovers, podcast tracks, a video&apos;s audio. Pick as many as you like
+            (up to 20 per batch, 3 hours in all). With <b>Train automatically</b> on, {name} trains by itself once it has
+            15+ minutes, then retrains with every 15 new minutes (a retrain replaces the model only if it&apos;s better; you can close the tab, keep Colab running).</HowItWorks>
+          <label className="drop slim" style={{ cursor: "var(--cur-pointer, pointer)" }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files).filter((f) => /^(audio|video)\//.test(f.type)); setPending((p) => [...p, ...fs.map((file) => ({ file }))]); }}>
+            <UploadSimple size={18} /><span className="small">Choose or drop audio / video files</span>
+            <input type="file" hidden multiple accept="audio/*,video/*" onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; setPending((p) => [...p, ...fs.map((file) => ({ file }))]); }} />
+          </label>
+        </>
+      )}
+      {pending.length > 0 && (
+        <div className="stack" style={{ gap: 10, marginTop: 14, padding: 12, border: "1px solid var(--line)", borderRadius: 12 }}>
+          <div className="row between"><b className="small">Ready for {name}&apos;s dataset · {pending.length} {pending.length === 1 ? "recording" : "recordings"}</b>
+            <span className="tiny dim">listen, remove what you don&apos;t want</span></div>
+          {pending.map((x, k) => <FilePreview key={`${x.file.name}-${k}`} file={x.file} onRemove={() => drop(k)} />)}
+          {pending.length > 20 && <span className="tiny dim">The first 20 go in this batch; add the rest after.</span>}
+          <div className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <label className="row small" style={{ gap: 8, marginRight: "auto" }} title={`First training at 15+ minutes, then a retrain every 15 new minutes; a retrain only replaces the current model if it scores better`}>
+              <input type="checkbox" style={{ width: "auto" }} checked={auto} onChange={(e) => { setAuto(e.target.checked); try { localStorage.setItem("vb-autotrain", e.target.checked ? "1" : "0"); } catch {} }} />
+              Train automatically when added</label>
+            <button className="ghost sm" onClick={() => setPending((p) => { p.forEach((x) => x.forget?.()); return []; })}>Discard all</button>
+            <button className="sm" onClick={send} disabled={busy || up !== null || !status?.online || !!rec}
+              title={!status?.online ? "Start the GPU worker first (your takes stay saved here)" : undefined}>
+              Add {Math.min(20, pending.length)} to dataset <ArrowRight size={13} /></button>
+          </div>
+        </div>
+      )}
+      {err && <p className="err" style={{ margin: "10px 0 0" }}>{err}</p>}
+      {!status?.online && status && <p className="tiny dim">The GPU worker is offline. You can still record and queue takes (they&apos;re saved on this device); start the Colab notebook to add them.</p>}
+      {(job || up !== null) && <div style={{ marginTop: 14 }}><JobProgress job={job} kind="dataset" uploading={up !== null} uploadFrac={up ?? 0} /></div>}
+      {job?.status === "error" && <DatasetError job={job} />}
+      {job?.status === "done" && job.part && job.part.clips === 0 && <p className="err small">No clips were kept from that batch.</p>}
+    </div>
+  );
+}
+
+/** Why a dataset batch failed, in words, with what to do next. */
+function DatasetError({ job }: { job: Polled }) {
+  const e = job.error ?? "";
+  const tip = /no usable clips/i.test(e) ? "Every clip was dropped by the quality checks. Record closer to the mic in a quiet room, read whole sentences, and keep pauses under a few seconds (use Pause for longer breaks)."
+    : /3 hours/i.test(e) ? "Split the files over two batches."
+    : /download|403|404|expired/i.test(e) ? "The upload link expired before the worker got to it. Add the recordings again."
+    : /ffmpeg|Invalid data|moov/i.test(e) ? "One file couldn't be read as audio. Remove it (or export it as WAV/MP3) and add the rest."
+    : "Your recordings are still saved on this device: fix the issue and add them again.";
+  return <p className="err small" style={{ margin: "8px 0 0" }}>{e || "The batch failed."} {tip}</p>;
+}
+
+const TRAIN_STAGES: Record<string, string> = { queued: "Waiting for the GPU", installing: "Installing the training tools", preparing: "Starting",
+  downloading: "Fetching your recordings", encoding: "Turning your clips into tokens", loading: "Loading Orpheus 3B",
+  training: "Learning your voice", listening: "Listening to every epoch, keeping the best", saving: "Saving your model", testing: "Voicing a test line", done: "Done" };
+
+function Train({ name, minutes, follow, head, engine, onTrained }: { name: string; minutes: number; follow?: string; head: React.ReactNode;
+  engine: "orpheus" | "qwen"; onTrained: () => void }) {
+  const qwen = engine === "qwen";
+  const { status } = useStatus();
+  const { confirm, toast } = useDialog();
+  const [model, setModel] = useState<Model | null>(null);
+  const [err, setErr] = useState("");
+  const loadModel = useCallback(() => {
+    setModel(null);
+    if (qwen) api<{ models: Model[] }>("qmodels").then((r) => setModel(r.models.find((m) => m.name === name) ?? null)).catch(() => {});
+    else api<{ model: Model | null }>(`model?name=${encodeURIComponent(name)}`).then((r) => setModel(r.model?.name === name ? r.model : null)).catch(() => {});
+  }, [name, qwen]);
+  useEffect(loadModel, [loadModel]);
+  const { job, start } = usePoll((j) => {
+    toast((j.model as Model & { gate?: string })?.gate === "comparing" ? `${name}'s new ${qwen ? "Qwen voice" : "model"} is trained. Now it's compared with the current one (Getting better card) and switches only if it's better.`
+      : qwen ? `${name} is fine-tuned. Pick "ft_${name}" on Qwen3-TTS in Voiceover.` : `${name} is trained. Pick "${name}" under Your model in Voiceover.`, "ok");
+    if (j.model) { loadModel(); onTrained(); }
+  });
+  const busy = !!job && ["queued", "running"].includes(job.status);
+  const p = job?.progress;
+  useResumeJob<Polled>(["train"], (j) => { if ((j as Polled & { voice?: string }).voice === name) start(j); });
+  useWorkerJobs("train", name, busy, start, undefined, (j) => (j.train_engine === "qwen") === qwen);
+  // a train job the server started after an upload (auto-train): show its progress here
+  useEffect(() => {
+    if (follow) api<Polled & { train_engine?: string }>(`jobs/${follow}`).then((j) => { if ((j.train_engine === "qwen") === qwen) start(j); }).catch(() => {});
+  }, [follow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function train() {
+    setErr("");
+    if (minutes < 15 && !(await confirm({ title: `Train on ${minutes.toFixed(1)} minutes?`, body: `It will train, but under 15 minutes the model sounds only roughly like ${name}. 30 minutes is good, 60 is best. Add more any time and train again.`, confirm: "Train anyway" }))) return;
+    if (model && !(await confirm({ title: `Train ${name} again?`, body: `When it's done it's compared with ${name}'s current ${qwen ? "fine-tuned Qwen voice" : "model"} on test sentences, and replaces it only if it scores at least as well. Voice and video jobs wait while the GPU trains.`, confirm: "Train" }))) return;
+    try {
+      start(await api<Job>("jobs", { body: { kind: "train", name, engine } }));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  return (
+    <div className="card">
+      {head}
+      {qwen ? (
+        <HowItWorks>Fine-tunes Qwen3-TTS 1.7B on every clip of <b>{name}</b> (Qwen&apos;s own recipe): a voice that holds up over long scripts in 10 languages,
+          beyond what a 20 s sample can carry. Needs an A100, L4 or A10 runtime (not the free T4); roughly 15-60 min. Then pick <b>ft_{name}</b> on
+          Qwen3-TTS in Voiceover. Keep Colab open until it finishes.</HowItWorks>
+      ) : (
+        <HowItWorks>Learns <b>{name}</b> from every clip: pace, emphasis, how sentences flow. The most natural long English reads. About 1-2 h on the GPU
+          (other jobs wait); then pick <b>{name}</b> under <b>Your model</b> in Voiceover. Keep Colab open until it finishes.</HowItWorks>
+      )}
+      {model && !busy && (
+        <div className="stack" style={{ gap: 8, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+          <div className="row between small"><b>Current {qwen ? "Qwen voice" : "model"} · {qwen ? `ft_${model.name}` : model.name}</b>
+            <span className="dim">{model.minutes.toFixed(1)} min · {model.clips} clips · {model.best_epoch ? `best of ${model.epochs} epochs: ${model.best_epoch}` : `${model.epochs} epochs`} · loss {model.loss.toFixed(3)}{model.flow_clips ? " · flow" : ""} · {new Date(model.created).toLocaleDateString()}</span></div>
+          {model.sample_url && <><span className="dim tiny">“{model.sample?.text}”</span><Player src={model.sample_url} compact /></>}
+          {!!model.listening?.length && (
+            <div className="tiny dim">Picked by listening: {model.listening.map((e) => (
+              <span key={e.epoch} style={{ marginRight: 10, color: e.epoch === model.best_epoch ? "var(--ink)" : undefined }}>
+                epoch {e.epoch} · words {pct(e.match)} · like you {pct(e.similarity)}{e.epoch === model.best_epoch ? " ✓" : ""}</span>))}</div>
+          )}
+        </div>
+      )}
+      {job && (busy || job.status === "error" || job.status === "cancelled") && (
+        <div className="stack" style={{ gap: 6, padding: "10px 0" }}>
+          <div className="row between small">
+            <b>{job.status === "error" ? "Training stopped" : job.status === "cancelled" ? "Cancelled" : TRAIN_STAGES[p?.stage ?? "queued"] ?? p?.stage}</b>
+            {busy && p && <span className="dim">{p.detail}{p.eta_s ? ` · about ${fmtS(p.eta_s)} left` : ""}</span>}
+          </div>
+          {busy && <div className="bar live"><i style={{ width: `${Math.round((p?.fraction ?? 0) * 100)}%` }} /></div>}
+          {job.error && <p className="err" style={{ margin: 0 }}>{job.error}</p>}
+          {job.status === "error" && (job as Polled & { log?: string }).log && (
+            <details><summary className="tiny dim">What the trainer said</summary>
+              <pre className="mono tiny" style={{ whiteSpace: "pre-wrap", maxHeight: 240, overflow: "auto" }}>{(job as Polled & { log?: string }).log!.split("\n").slice(-25).join("\n")}</pre></details>
+          )}
+          {busy && <button className="ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => api(`jobs/${job.id}/cancel`, { method: "POST" }).catch(() => {})}>Cancel training</button>}
+        </div>
+      )}
+      <div className="row between" style={{ marginTop: 12 }}>
+        {/* why the button is off, in plain words: the usual reasons are too few minutes or the worker being offline */}
+        {!busy && !status?.online ? <span className="small" style={{ color: "var(--warn)" }}>Start the Colab GPU worker to train.</span>
+          : !busy && !minutes ? <span className="small" style={{ color: "var(--warn)" }}>Add recordings first.</span>
+          : <span className="tiny dim">{minutes.toFixed(1)} minutes to learn from{minutes < 15 ? " · 15+ sounds right, 30 good, 60 best" : minutes < 30 ? " · 30 is good, 60 best" : ""}.</span>}
+        <span className="row" style={{ gap: 6 }}>
+          <button className="sm" onClick={train} disabled={busy || !minutes || !status?.online} title={!status?.online ? "Start the GPU worker first" : undefined}>
+            {busy ? "Training…" : model ? "Train again" : qwen ? "Fine-tune Qwen3-TTS" : "Train my voice"} <ArrowRight size={13} />
+          </button>
+        </span>
+      </div>
+      {err && <p className="err" style={{ margin: "8px 0 0" }}>{err}</p>}
+    </div>
+  );
+}
+
+function Benchmark({ mine, name }: { mine: MyVoice[]; name: string }) {
+  const { status } = useStatus();
+  const [voice, setVoice] = useState(mine[0]?.name ?? "");
+  const [lines, setLines] = useState(TEST);
+  const [picks, setPicks] = useState({ myvoice: true, qwen: true, chatterbox: true, orpheus: false });
+  const { job, start } = usePoll();
+  const [err, setErr] = useState("");
+  useEffect(() => { if (!voice && mine[0]) setVoice(mine[0].name); }, [mine, voice]);
+
+  async function run() {
+    setErr("");
+    const cands = [
+      picks.myvoice && { engine: "myvoice", voice: name, label: `Your model · ${name}` },
+      picks.qwen && voice && { engine: "qwen", voice, label: `Qwen clone · ${voice}` },
+      picks.chatterbox && voice && { engine: "chatterbox", voice, label: `Chatterbox clone · ${voice}` },
+      picks.orpheus && { engine: "orpheus", voice: "tara", label: "Orpheus preset (baseline)" },
+    ].filter(Boolean);
+    try {
+      start(await api<Job>("jobs", { body: { kind: "benchmark", candidates: cands, target_voice: voice || undefined, style: "tech", platform: "youtube",
+        lines: lines.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 20), label: `Benchmark · ${voice || "voices"}` } }));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+  useResumeJob<Polled>(["benchmark"], start);
+  const b = job?.benchmark;
+  const best = b?.candidates.find((c) => !c.error);
+
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Benchmark</h2><Info>Every voice reads the same sentences and gets the same scoring.</Info></div>
+      <HowItWorks>Use sentences you never recorded. Voice match is measured against your real recording; naturalness is a predicted MOS (1-5); speed is seconds of compute per second of audio.</HowItWorks>
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 14 }}>
+        <textarea className="doc short" aria-label="Benchmark sentences" value={lines} onChange={(e) => setLines(e.target.value)} style={{ minHeight: 170, marginTop: 0 }} />
+        <div className="stack" style={{ gap: 10 }}>
+          <div><label className="f">Your real voice (the target)</label>
+            <Select label="Your real voice (the target)" value={voice} onChange={setVoice} placeholder="Record a voice on the Voices page first" options={mine.map((m) => [m.name, m.label] as const)} /></div>
+          {([["myvoice", "Your trained model"], ["qwen", "Qwen clone"], ["chatterbox", "Chatterbox clone"], ["orpheus", "Orpheus preset"]] as const).map(([k, l]) => (
+            <label key={k} className="row small" style={{ gap: 8 }}><input type="checkbox" style={{ width: "auto" }} checked={picks[k]} onChange={(e) => setPicks({ ...picks, [k]: e.target.checked })} />{l}</label>
+          ))}
+          <button onClick={run} disabled={!status?.online || (job ? ["queued", "running"].includes(job.status) : false)}>Run benchmark</button>
+          {err && <p className="err" style={{ margin: 0 }}>{err}</p>}
+        </div>
+      </div>
+      {job && !b && <div style={{ marginTop: 14 }}><JobProgress job={job} kind="tts" /></div>}
+      {b && (
+        <div style={{ marginTop: 16 }}>
+          <table className="table">
+            <thead><tr><th>Voice</th><th>Script</th><th>Like you</th><th>Natural</th><th>Speed</th><th>Score</th></tr></thead>
+            <tbody>{b.candidates.map((c) => (
+              <tr key={c.label}>
+                <td><b className="small">{c.label}</b>{c === best && <span className="pill ok" style={{ marginLeft: 8 }}>best</span>}{c.error && <div className="tiny dim">{c.error.slice(0, 120)}</div>}</td>
+                <td><span className={`pill ${matchClass(c.match)}`}>{pct(c.match)}</span></td>
+                <td><span className={`pill ${simClass(c.similarity)}`}>{pct(c.similarity)}</span></td>
+                <td className="mono small">{c.mos != null ? c.mos.toFixed(2) : "—"}</td>
+                <td className="mono small">{c.rtf != null ? `${c.rtf}×` : "—"}</td>
+                <td className="mono small">{c.score != null ? c.score.toFixed(2) : "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <h2 style={{ marginTop: 18 }}>Listen side by side</h2>
+          {job.results.map((r) => <LineRow key={r.id} jobId={job.id} line={{ ...r, id: r.id }} audio={r.url} slug="benchmark" />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type KVoice = { name: string; voice: string; job: string; created: number; target: string; similarity: number; match: number; start: number;
+  closest: { voice: string; similarity: number }[]; mix?: { voice: string; weight: number }[]; sample_url?: string | null };
+
+/** Your voice inside Kokoro: the clarity and speed of af_heart, as close to you as Kokoro's voice space allows. */
+function KokoroVoice({ mine, name }: { mine: MyVoice[]; name: string }) {
+  const { status } = useStatus();
+  const { toast } = useDialog();
+  const [target, setTarget] = useState("");
+  const [have, setHave] = useState<KVoice | null>(null);
+  const [rounds, setRounds] = useState(24);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api<{ voices: KVoice[] }>("kvoices").then((r) => setHave(r.voices.find((v) => v.name === name) ?? null)).catch(() => {});
+  }, [name]);
+  useEffect(load, [load]);
+  // the voice made from this dataset (Use it in every engine) first, else your first recorded voice
+  useEffect(() => { if (!mine.some((m) => m.name === target) && mine[0]) setTarget((mine.find((m) => m.name === name) ?? mine[0]).name); }, [mine, target, name]);
+  const { job, start } = usePoll((j) => { toast(`Found ${name}'s voice in Kokoro: use kv_${name} in Voiceover (Kokoro)`, "ok"); void j; load(); });
+  useResumeJob<Polled>(["voicewalk"], (j) => { if ((j as Polled & { voice?: string }).voice === name) start(j); });
+  const busy = !!job && ["queued", "running"].includes(job.status);
+
+  async function run() {
+    setErr("");
+    try {
+      start(await api<Job>("jobs", { body: { kind: "voicewalk", name, voice: target, rounds, label: `Your voice in Kokoro · ${name}` } }));
+    } catch (e) { setErr((e as Error).message); }
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Find it in Kokoro</h2><Info>af_heart clarity, instant, runs on the CPU.</Info></div>
+      <HowItWorks>Kokoro is the tiny engine behind af_heart: crisp, steady and instant. This searches Kokoro&apos;s voice space for the mix of its voices that
+        sounds most like your recording (scored by the same voice match as the review), then checks it still speaks every word clearly.
+        It&apos;s the closest Kokoro can get to you, not a clone; your trained model copies you more exactly. About 10-15 minutes.</HowItWorks>
+      {have && !busy && (
+        <div className="stack" style={{ gap: 8, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+          <div className="row between small" style={{ flexWrap: "wrap", gap: 8 }}><b>kv_{name}</b>
+            <span className="dim">like you {pct(have.similarity)} (closest built-in {have.closest[0]?.voice} {pct(have.closest[0]?.similarity)}) · words {pct(have.match)} · {new Date(have.created).toLocaleDateString()}</span></div>
+          {have.sample_url && <Player src={have.sample_url} compact />}
+          {!!have.mix?.length && <span className="tiny dim">Mix: {have.mix.slice(0, 5).map((m) => `${m.voice} ${Math.round(m.weight * 100)}%`).join(" · ")}</span>}
+        </div>
+      )}
+      <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="field" style={{ margin: 0, flex: "1 1 200px" }}><label className="f">Match this recording of you</label>
+          <Select label="Match this recording of you" value={target} onChange={setTarget} placeholder="Record a voice on the Voices page first" options={mine.map((m) => [m.name, m.label] as const)} /></div>
+        <div className="field" style={{ margin: 0, width: 150 }}><label className="f">Search</label>
+          <Select label="Search depth" value={rounds} onChange={setRounds} options={[[12, "Quick (12 rounds)"], [24, "Normal (24)"], [48, "Thorough (48)"]]} /></div>
+        <button onClick={run} disabled={busy || !target || !status?.online}>{have ? "Search again" : "Find my Kokoro voice"} <ArrowRight size={13} /></button>
+      </div>
+      {err && <p className="err" style={{ margin: "8px 0 0" }}>{err}</p>}
+      {job && (busy || job.status === "error") && <div style={{ marginTop: 14 }}><JobProgress job={job} kind="tts" /></div>}
+    </div>
+  );
+}
+
+/** Any dataset as a cloning voice: ~15-20 s of its cleanest clips become a recorded voice named after it, so Qwen3-TTS,
+ *  Chatterbox, Kokoro (step 5) and the benchmark can all use it, not just the trained Orpheus model. */
+function EveryEngine({ name, minutes, mine, head, onMade }: { name: string; minutes: number; mine: MyVoice[]; head: React.ReactNode; onMade: () => void }) {
+  const { status } = useStatus();
+  const { toast } = useDialog();
+  const [err, setErr] = useState("");
+  const [cap, setCap] = useState(20);
+  const have = mine.find((m) => m.name === name);
+  const { job, start } = usePoll(() => { toast(`${name} is a voice now: pick it in Voiceover on Qwen3-TTS or Chatterbox`, "ok"); onMade(); });
+  useResumeJob<Polled>(["reference"], (j) => { if ((j as Polled & { voice?: string }).voice === name) start(j); });
+  const busy = !!job && ["queued", "running"].includes(job.status);
+
+  async function make() {
+    setErr("");
+    try {
+      start(await api<Job>("myvoices", { body: { name, dataset: name, label: name, max_seconds: cap } }));
+    } catch (e) { setErr((e as Error).message); }
+  }
+
+  return (
+    <div className="card">
+      {head}
+      <HowItWorks>Ready in about a minute: picks the cleanest stretch of <b>{name}</b>&apos;s clips and saves it as the voice <b>{name}</b>. Then choose it in
+        Voiceover on Qwen3-TTS (best cloning, 10 languages) or Chatterbox (emotion, 23 languages, Hindi).</HowItWorks>
+      <label className="row small" style={{ gap: 8 }}>Sample length
+        <Select size="sm" label="Seconds to keep" value={cap} onChange={setCap} style={{ width: "auto" }} options={[20, 30, 45, 60].map((v) => [v, `${v} s${v === 20 ? " (best for cloning)" : ""}`] as const)} />
+        <span className="tiny dim">longer can catch more of the voice; Chatterbox listens to about the first 10 s</span></label>
+      {have && !busy && (
+        <div className="stack" style={{ gap: 6, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+          <div className="row between small"><b>Voice · {have.name}</b><span className="dim">{have.duration.toFixed(1)} s · {new Date(have.created).toLocaleDateString()}</span></div>
+          <span className="dim tiny">“{have.transcript}”</span>
+          {have.url && <Player src={have.url} compact />}
+        </div>
+      )}
+      {job && (busy || job.status === "error") && <div style={{ marginTop: 10 }}><JobProgress job={job} kind="tts" /></div>}
+      <div className="row between" style={{ marginTop: 12 }}>
+        <span className="tiny dim">{minutes > 0 ? `${minutes.toFixed(1)} minutes to pick from.` : "Collect first."}</span>
+        <button className="sm" onClick={make} disabled={busy || minutes <= 0 || !status?.online} title={!status?.online ? "Start the GPU worker first" : undefined}>
+          {busy ? "Making…" : have ? "Pick fresh clips" : `Make ${name} a voice`} <ArrowRight size={13} /></button>
+      </div>
+      {err && <p className="err" style={{ margin: "8px 0 0" }}>{err}</p>}
+    </div>
+  );
+}
+
+type Gate = { engine: "orpheus" | "qwen"; job: string; stage: "comparing" | "promoted" | "kept" | "error"; at: number; old?: number | null; new?: number | null; note?: string };
+type Spot = { cat: string; label: string; lines: number; problem_rate: number; issues: { flag: string; label: string; lines: number }[] };
+type CoachReport = { name: string; lines: number; rated_up: number; rated_down: number; enough: boolean; problem_rate: number; retrain_minutes: number;
+  recent: { lines: number; words: number | null; like_you: number | null; natural: number | null; pitch_spread: number | null };
+  weak_spots: Spot[]; everywhere: { flag: string; label: string; lines: number }[]; missed_words: { word: string; times: number }[]; gates: Gate[];
+  feedback?: { pairs: number; from_you: number; min: number; good: number } };
+type Script = { minutes: number; focus: { cat: string; label: string; tip: string }[]; words_to_practise: string[]; lines: { text: string; cat: string }[] };
+
+/** A long explanation, folded into an (i): the page stays quiet, the detail is one hover away. */
+function HowItWorks({ children }: { children: React.ReactNode }) {
+  return <div className="how">How it works <Info>{children}</Info></div>;
+}
+
+const GATE_TEXT: Record<Gate["stage"], string> = { comparing: "Comparing the new model with the current one…", promoted: "New model in use",
+  kept: "Kept the current model", error: "Comparison didn't finish" };
+
+/** The voice coach: every line a trained voice reads is checked, weak spots become the next recording script, and a
+ *  retrained model only replaces the current one when it scores at least as well. */
+function Coach({ name, trained, onRecord, onSwitched }: { name: string; trained: boolean; onRecord: (lines: string[]) => void; onSwitched: () => void }) {
+  const { toast } = useDialog();
+  const [rep, setRep] = useState<CoachReport | null>(null);
+  const [script, setScript] = useState<Script | null>(null);
+  const [mins, setMins] = useState(8);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [spell, setSpell] = useState<Record<string, string>>({});
+  const load = useCallback(() => { api<CoachReport>(`coach/${name}`).then(setRep).catch(() => {}); }, [name]);
+  useEffect(() => { setRep(null); setScript(null); load(); }, [load]);
+  const comparing = rep?.gates?.[0]?.stage === "comparing";
+  const was = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    // while a comparison runs, look again every 20 s; when it settles, say what happened
+    const g = rep?.gates?.[0];
+    if (was.current === "comparing" && g && g.stage !== "comparing") { toast(g.note ?? GATE_TEXT[g.stage], g.stage === "promoted" ? "ok" : undefined); onSwitched(); }
+    was.current = g?.stage;
+    if (!comparing) return;
+    const t = setTimeout(load, 20_000);
+    return () => clearTimeout(t);
+  }, [rep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function write() {
+    setErr(""); setBusy(true);
+    try { setScript(await api<Script>(`coach/${name}/script`, { body: { minutes: mins } })); } catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  }
+  async function gate(action: "use" | "compare", job: string) {
+    setErr("");
+    try { await api(`coach/${name}/gate`, { body: { action, job } }); load(); if (action === "use") { toast("Switched to the new model", "ok"); onSwitched(); } }
+    catch (e) { setErr((e as Error).message); }
+  }
+  async function fix(word: string) {
+    const say = spell[word]?.trim();
+    if (!say) return;
+    try {
+      const s = await api<{ pronounce: Record<string, string> }>("settings");
+      await api("settings", { body: { pronounce: { ...s.pronounce, [word]: say } } });
+      toast(`“${word}” will be read as “${say}” from now on`, "ok");
+      setSpell((x) => { const { [word]: _, ...rest } = x; return rest; });
+    } catch (e) { setErr((e as Error).message); }
+  }
+  const text = script ? script.lines.map((l) => l.text).join("\n") : "";
+  async function rlhf(kind: "practice" | "polish") {
+    setErr("");
+    try {
+      await api(`coach/${name}/${kind}`, { body: {} });
+      toast(kind === "polish" ? `Polishing ${name} on your feedback: when it's done it's compared with the current model` : `Voicing practice takes for ${name}: their winners and losers become feedback pairs`, "ok");
+    } catch (e) { setErr((e as Error).message); }
+  }
+  const fb = rep?.feedback;
+  const g = rep?.gates?.[0];
+
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Getting better</h2><Info>The more {name}&apos;s voice is used, the more it knows what to fix.</Info></div>
+      <HowItWorks>Every line {trained ? <b>{name}</b> : "a trained voice"} reads is checked: the words (Whisper), how much it sounds like you, how natural it sounds, and the
+        delivery (flat pitch, rushing, odd pauses). Rate lines with 👍 / 👎 in Voiceover and the Library too. The weak spots become your next recording script;
+        with <b>Train automatically</b> on, {rep?.retrain_minutes ?? 15} new minutes retrain the voice, and the new model only replaces the current one if it scores at least as well.</HowItWorks>
+      {!trained && <p className="small" style={{ color: "var(--warn)", margin: 0 }}>Train {name} first (above): the coach listens to a trained voice.</p>}
+      {g && (
+        <div className="stack" style={{ gap: 6, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+          <div className="row between small" style={{ flexWrap: "wrap", gap: 8 }}>
+            <b>{GATE_TEXT[g.stage]} · {g.engine === "qwen" ? `ft_${name}` : name}</b>
+            <span className="dim">{g.old != null && g.new != null ? `current ${g.old.toFixed(3)} · new ${g.new.toFixed(3)} · ` : ""}{new Date(g.at).toLocaleString()}</span>
+          </div>
+          {comparing && <div className="bar live"><i style={{ width: "40%" }} /></div>}
+          {g.note && !comparing && <span className="tiny dim">{g.note}</span>}
+          {(g.stage === "kept" || g.stage === "error") && (
+            <div className="row" style={{ gap: 8 }}>
+              {(g.stage === "error" || g.new == null) && <button className="ghost sm" onClick={() => gate("compare", g.job)}>Compare again</button>}
+              <button className="ghost sm" onClick={() => gate("use", g.job)}>Use the new model anyway</button>
+            </div>
+          )}
+        </div>
+      )}
+      {rep && rep.lines > 0 && (
+        <div className="stack" style={{ gap: 10, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            <span className="pill">{rep.lines} lines heard</span>
+            {rep.recent.words != null && <span className={`pill ${matchClass(rep.recent.words)}`} title="Script accuracy, last 60 lines">words {pct(rep.recent.words)}</span>}
+            {rep.recent.like_you != null && <span className={`pill ${simClass(rep.recent.like_you)}`} title="Voice match vs your recording">like you {pct(rep.recent.like_you)}</span>}
+            {rep.recent.natural != null && <span className="pill" title="Predicted naturalness (MOS, 1-5)">natural {rep.recent.natural.toFixed(2)}</span>}
+            {rep.recent.pitch_spread != null && <span className={`pill ${rep.recent.pitch_spread < 3 ? "warn" : ""}`} title="How much the pitch moves (semitones); lively speech is about 5-12">expression {rep.recent.pitch_spread.toFixed(1)} st</span>}
+            {(rep.rated_up > 0 || rep.rated_down > 0) && <span className="pill">👍 {rep.rated_up} · 👎 {rep.rated_down}</span>}
+          </div>
+          {!rep.enough ? <span className="tiny dim">A few more voiceovers and the coach can tell you where {name} is weak.</span> : (
+            <>
+              {rep.weak_spots.length === 0 && rep.everywhere.length === 0
+                ? <span className="small">No clear weak spot right now: {Math.round((1 - rep.problem_rate) * 100)}% of lines pass every check. More varied recordings still help.</span>
+                : <div className="stack" style={{ gap: 4 }}>
+                  {rep.weak_spots.map((w) => (
+                    <div key={w.cat} className="small"><b>{w.label[0].toUpperCase() + w.label.slice(1)}</b>
+                      <span className="dim"> · {Math.round(w.problem_rate * 100)}% of {w.lines} lines have a problem{w.issues[0] ? `, mostly ${w.issues.slice(0, 2).map((x) => x.label).join(" and ")}` : ""}</span></div>
+                  ))}
+                  {rep.everywhere.map((x) => <div key={x.flag} className="small"><b>{x.label[0].toUpperCase() + x.label.slice(1)}</b><span className="dim"> · {x.lines} of {rep.lines} lines</span></div>)}
+                </div>}
+            </>
+          )}
+          {rep.missed_words.length > 0 && (
+            <div className="stack" style={{ gap: 6 }}>
+              <span className="small"><b>Words it keeps missing</b> <span className="dim tiny">type how to say it (e.g. “koo-ber-net-eez”) and it&apos;s fixed for every voice now</span></span>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {rep.missed_words.map((w) => (
+                  <span key={w.word} className="row" style={{ gap: 4 }}>
+                    <span className="pill warn">{w.word} ×{w.times}</span>
+                    <input value={spell[w.word] ?? ""} placeholder="say it as…" style={{ width: 120 }} onChange={(e) => setSpell({ ...spell, [w.word]: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter") fix(w.word); }} />
+                    {spell[w.word] && <button className="ghost xs" onClick={() => fix(w.word)}>Save</button>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {trained && fb && (
+        <div className="stack" style={{ gap: 6, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+          <div className="row between small" style={{ flexWrap: "wrap", gap: 8 }}>
+            <b>Learn from feedback (RLHF)</b>
+            <span className="dim">{fb.pairs} of {fb.good} pairs{fb.from_you ? ` · ${fb.from_you} from your ratings` : ""}</span>
+          </div>
+          <div className="meter"><i style={{ width: `${Math.min(100, (fb.pairs / fb.good) * 100)}%` }} /></div>
+          <HowItWorks>Each time the review keeps one take of a sentence over another, that&apos;s a pair: the better take and the worse one.
+            Your 👍 / 👎 count double. With {fb.min}+ pairs, a short polish (DPO, ~15-30 min of GPU) teaches the model to prefer the better takes;
+            the model check only switches to it if it scores at least as well.</HowItWorks>
+          <div className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <button className="ghost sm" onClick={() => rlhf("practice")} title="40 sentences × 3 takes each: a few minutes of GPU">Make practice takes</button>
+            <button className="sm" onClick={() => rlhf("polish")} disabled={fb.pairs < fb.min} title={fb.pairs < fb.min ? `Needs ${fb.min} pairs` : undefined}>Polish with feedback <ArrowRight size={13} /></button>
+          </div>
+        </div>
+      )}
+      <div className="row between" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
+        <span className="tiny dim">Your next recording session, written around what {name} is weakest at.</span>
+        <span className="row" style={{ gap: 6 }}>
+          <Select size="sm" label="Session length" value={mins} onChange={setMins} style={{ width: "auto" }} options={[5, 8, 12, 15].map((m) => [m, `${m} min`] as const)} />
+          <button className="sm" onClick={write} disabled={busy}>{script ? "Write another" : "Write my next script"} <ArrowRight size={13} /></button>
+        </span>
+      </div>
+      {script && (
+        <div className="stack" style={{ gap: 8, marginTop: 12, padding: 12, border: "1px solid var(--line)", borderRadius: 12 }}>
+          <div className="row between small" style={{ flexWrap: "wrap", gap: 8 }}>
+            <b>About {script.minutes} min · {script.lines.length} lines{script.focus.length ? ` · focus: ${script.focus.map((f) => f.label).join(", ")}` : " · a bit of everything"}</b>
+            <span className="row" style={{ gap: 6 }}>
+              <button className="icon-btn" aria-label="Copy the script" title="Copy" onClick={() => navigator.clipboard.writeText(text).then(() => toast("Copied", "ok")).catch(() => {})}><Copy size={15} /></button>
+              <a className="icon-btn btn" aria-label="Download the script" title="Download .txt" href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`} download={`${name}-script.txt`}><DownloadSimple size={15} /></a>
+              <button className="sm" onClick={() => onRecord(script.lines.map((l) => l.text))}><Microphone size={13} weight="fill" /> Record it now</button>
+            </span>
+          </div>
+          {script.focus.map((f) => <span key={f.cat} className="tiny dim">• {f.tip}</span>)}
+          <ol className="small" style={{ margin: 0, paddingLeft: 22, maxHeight: 260, overflow: "auto" }}>
+            {script.lines.map((l, k) => <li key={k} style={{ padding: "2px 0" }}>{l.text}</li>)}
+          </ol>
+        </div>
+      )}
+      {err && <p className="err" style={{ margin: "8px 0 0" }}>{err}</p>}
+    </div>
+  );
+}
+
+type Person = { name: string; minutes: number; clips: number };
+
+export default function MyModel() {
+  const { confirm } = useDialog();
+  const [mine, setMine] = useState<MyVoice[]>([]);
+  const [name, setName] = useState("");
+  const [people, setPeople] = useState<Person[]>([]);
+  const [models, setModels] = useState<Model[]>([]);
+  const [ds, setDs] = useState<Dataset | null>(null);
+  const [follow, setFollow] = useState<string>();
+  const [fresh, setFresh] = useState("");
+  const load = useCallback(() => { if (name) api<Dataset>(`datasets/${name}`).then(setDs).catch(() => setDs(null)); }, [name]);
+  const loadModels = useCallback(() => { api<{ models: Model[] }>("models").then((r) => setModels(r.models)).catch(() => {}); }, []);
+  const loadMine = useCallback(() => { api<{ voices: MyVoice[] }>("myvoices").then((r) => setMine(r.voices)).catch(() => {}); }, []);
+  useEffect(loadMine, [loadMine]);
+  useEffect(loadModels, [loadModels]);
+  useEffect(() => {
+    // whose dataset to open: the one picked last on this device, else yours (from your sign-in name), else the first one
+    Promise.all([api<{ datasets: Person[] }>("datasets").catch(() => ({ datasets: [] as Person[] })),
+      fetch("/api/ws/me").then((r) => r.json()).catch(() => ({}))]).then(([d, me]) => {
+      setPeople(d.datasets);
+      let saved = "";
+      try { saved = localStorage.getItem("vb-dataset") ?? ""; } catch {}
+      const slug = String(me?.user?.name ?? "").toLowerCase().split(/\s+/)[0]?.replace(/[^a-z0-9_-]/g, "") ?? "";
+      setName(saved || (slug && d.datasets.some((x) => x.name === slug) ? slug : "") || d.datasets[0]?.name || slug || "me");
+    });
+  }, []);
+  useEffect(() => { if (name) try { localStorage.setItem("vb-dataset", name); } catch {} }, [name]);
+  useEffect(load, [load]);
+  const minutes = ds?.minutes ?? 0;
+  const refresh = () => { load(); api<{ datasets: Person[] }>("datasets").then((d) => setPeople(d.datasets)).catch(() => {}); };
+
+  // the recordings card only shows when it's needed: a new (empty) voice, or after "Add recordings"; switching voices resets it
+  const [adding, setAdding] = useState(false);
+  const [script, setScript] = useState<string[] | null>(null);
+  useEffect(() => { setAdding(false); setScript(null); }, [name]);
+  const [make, setMake] = useState<"orpheus" | "qwen" | "clone">("orpheus");
+  const voices = [...new Set([...people.map((p) => p.name), ...models.map((m) => m.name), ...(name ? [name] : [])])];
+  const pickEngine = (
+    <div className="card-head"><h2>Make the voice</h2>
+      <div className="seg"><button className={make === "orpheus" ? "on" : ""} aria-pressed={make === "orpheus"} onClick={() => setMake("orpheus")}>Most natural <span className="faint tiny">· Orpheus</span></button>
+        <button className={make === "qwen" ? "on" : ""} aria-pressed={make === "qwen"} onClick={() => setMake("qwen")}>Multilingual <span className="faint tiny">· Qwen3-TTS</span></button>
+        <button className={make === "clone" ? "on" : ""} aria-pressed={make === "clone"} onClick={() => setMake("clone")}>Instant clone <span className="faint tiny">· 1 min</span></button></div>
+    </div>
+  );
+
+  return (
+    <>
+      <PageHeader title="Professional voice clone" sub="Train a model of your voice: pick a voice, add recordings, train it. 30+ minutes sounds most like you."
+        actions={<><Link href="/voices" className="btn ghost"><ArrowLeft size={15} />Voices</Link><Link href="/voices/new" className="btn ghost">Instant clone instead</Link></>} />
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head"><div><h2>Voice</h2><p className="sub">Each voice has its own recordings and model; both of you can use every voice.</p></div></div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {voices.map((n) => {
+            const p = people.find((x) => x.name === n);
+            const m = models.find((x) => x.name === n);
+            return <button key={n} className={`person ${n === name ? "on" : ""}`} onClick={() => setName(n)}>
+              <VoiceGlyph name={n} size={34} active={n === name} />
+              <span><b>{n}</b><span className="dim tiny mono">{(p?.minutes ?? 0).toFixed(1)} min{m ? " · trained" : ""}</span></span></button>;
+          })}
+          <span className="row" style={{ gap: 6 }}>
+            <input value={fresh} placeholder="+ New voice name" aria-label="New voice name" style={{ width: 170 }}
+              onChange={(e) => setFresh(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+              onKeyDown={(e) => { if (e.key === "Enter" && fresh) { setName(fresh); setFresh(""); } }} />
+            {fresh && <button className="sm" onClick={() => { setName(fresh); setFresh(""); }}>Add <ArrowRight size={13} /></button>}
+          </span>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div className="row between"><b>{name || "…"} · {minutes.toFixed(1)} min of clean clips</b>
+            <span className="row" style={{ gap: 10 }}><span className="dim small">{ds?.clips ?? 0} clips · {ds?.parts.length ?? 0} sessions</span>
+              {minutes > 0 && !adding && <button className="sm" onClick={() => setAdding(true)}><UploadSimple size={13} /> Add recordings</button>}</span></div>
+          <div className="meter"><i style={{ width: `${Math.min(100, (minutes / 60) * 100)}%` }} />{MILESTONES.map(([m, l]) => <span key={m} style={{ left: `${(m / 60) * 100}%` }}><em>{m} min · {l}</em></span>)}</div>
+          {ds && ds.parts.length > 0 && (
+            <details style={{ marginTop: 30 }}><summary className="small dim">Sessions</summary>
+              <div className="stack" style={{ gap: 4, marginTop: 6 }}>
+                {ds.parts.slice().reverse().map((p) => (
+                  <div key={p.job} className="row between small" style={{ padding: "6px 0", borderTop: "1px solid var(--line)" }}>
+                    <span>{p.sources.map((s) => s.name).join(", ")}</span>
+                    <span className="row" style={{ gap: 10 }}>
+                      <span className="dim">{p.minutes.toFixed(1)} of {p.input_minutes.toFixed(1)} min kept{Object.keys(p.dropped).length ? ` · dropped ${Object.entries(p.dropped).map(([k, v]) => `${v} ${k}`).join(", ")}` : ""}</span>
+                      <button className="icon-btn danger-h" aria-label="Remove session" onClick={async () => { if (await confirm({ title: "Remove this session from the dataset?", confirm: "Remove", danger: true })) { await api(`datasets/${name}/${p.job}`, { method: "DELETE" }); refresh(); } }}><TrashSimple size={14} /></button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      </div>
+      {name && (
+        <div className="stack" style={{ gap: 16 }}>
+          <Collect name={name} open={!minutes || adding} onClose={() => { setAdding(false); setScript(null); }} onAdded={(t) => { refresh(); if (t) setFollow(t); }} script={script} />
+          {make === "clone"
+            ? <EveryEngine name={name} minutes={minutes} mine={mine} head={pickEngine} onMade={loadMine} />
+            : <Train key={make} name={name} minutes={minutes} follow={follow} head={pickEngine} engine={make} onTrained={loadModels} />}
+          <Coach name={name} trained={models.some((m) => m.name === name)} onSwitched={loadModels}
+            onRecord={(lines) => { setScript(lines); setAdding(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+          <details className="card"><summary style={{ cursor: "var(--cur-pointer, pointer)" }}><b>More tools</b> <span className="dim small">· compare engines · find the voice in Kokoro</span></summary>
+            <div className="stack" style={{ gap: 16, marginTop: 14 }}>
+              <Benchmark mine={mine} name={name} />
+              <KokoroVoice mine={mine} name={name} />
+            </div>
+          </details>
+        </div>
+      )}
+    </>
+  );
+}

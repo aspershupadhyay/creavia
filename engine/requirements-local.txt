@@ -1,0 +1,8 @@
+# The engine's own process (gateway.py) on your computer. Each AI engine gets its own environment, installed by the
+# gateway with uv the first time you use it; model weights come from Creavia's Models page (or on first use).
+numpy
+scipy
+soundfile
+huggingface_hub
+yt-dlp
+curl_cffi

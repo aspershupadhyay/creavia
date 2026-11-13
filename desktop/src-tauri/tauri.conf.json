@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Creavia",
+  "version": "0.1.0",
+  "identifier": "studio.creavia.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Creavia",
+        "width": 1320,
+        "height": 860,
+        "minWidth": 380,
+        "minHeight": 560,
+        "center": true,
+        "backgroundColor": "#0a0a0a",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self' cloud: http://cloud.localhost",
+        "img-src": "'self' data: blob: cloud: http://cloud.localhost https:",
+        "media-src": "'self' data: blob: cloud: http://cloud.localhost https:",
+        "connect-src": "'self' ipc: http://ipc.localhost cloud: http://cloud.localhost",
+        "style-src": "'self' 'unsafe-inline'",
+        "font-src": "'self' data:",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "worker-src": "'self' blob:",
+        "frame-src": "'self' blob: cloud: http://cloud.localhost https:"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Create, publish and grow",
+    "longDescription": "Creavia is a creator studio: voiceovers in your own voice, clean-up, subtitles, images, files, posts, publishing and analytics. Run the AI models on your own computer (downloaded only when you choose) or on your own cloud.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "resources": { "../../engine/": "engine/" },
+    "copyright": "Creavia"
+  },
+  "plugins": {}
+}

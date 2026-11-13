@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Creavia">
+  <!-- App icon: Vee on a matte-black squircle. Flat colours only. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="#121210"/>
+  <g transform="translate(13 44) scale(3.9)">
+    <path d="M128 72v-18" stroke="#E4D6BF" stroke-width="8" stroke-linecap="round"/>
+    <path d="M128 22q4 14 18 18q-14 4-18 18q-4-14-18-18q14-4 18-18z" fill="#FFB627"/>
+    <path d="M128 70c54 0 84 36 84 82c0 40-32 66-84 66s-84-26-84-66c0-46 30-82 84-82z" fill="#E4D6BF"/>
+    <path d="M124 70c50 0 78 32 78 74c0 34-28 56-76 56s-74-22-74-56c0-42 26-74 72-74z" fill="#F6EFE3"/>
+    <ellipse cx="105" cy="140" rx="10" ry="14" fill="#141412"/>
+    <ellipse cx="151" cy="140" rx="10" ry="14" fill="#141412"/>
+    <circle cx="108.5" cy="134" r="3.6" fill="#FFFFFF"/>
+    <circle cx="154.5" cy="134" r="3.6" fill="#FFFFFF"/>
+    <ellipse cx="86" cy="164" rx="12" ry="7" fill="#FF9B7B"/>
+    <ellipse cx="170" cy="164" rx="12" ry="7" fill="#FF9B7B"/>
+    <path d="M120 162q8 8 16 0" stroke="#141412" stroke-width="5" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

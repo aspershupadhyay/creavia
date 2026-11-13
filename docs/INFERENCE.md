@@ -1,0 +1,294 @@
+# Inference plan: faster voice on big GPUs
+
+Make the voice engines faster and cheaper without changing what they sound like. The goal for this studio is not
+serving many users: it's a voiceover that starts playing almost at once, best-of-N quality at about the cost of one
+take, and no waiting when you switch voice or engine. Written 2026-10-26; work through it in order, one PR per step,
+and tick the boxes in `docs/ROADMAP.md` (section "Inference").
+
+## Rules (read first)
+
+- **Don't break what works.** Every step is behind a flag in `worker/config.py` (env override, e.g.
+  `VOICEBOX_STREAM=0`), default on only after it's measured on a real GPU. The old path stays until the new one has
+  run a full voiceover with review and subtitles.
+- **Work on every card, best on 80 GB.** The owner can't get an H100 right now. Each step must run on L4 (24 GB) and
+  A100 (40/80 GB); budgets come from the measured card (`config.vllm_pool_gb`, `vllm_max_seqs`), never a hardcoded
+  GPU name. H100 is a bonus, not a requirement.
+- **Measure before and after.** Use the same script on the same card and record the numbers in this file under
+  "Results": time to first audio, wall time for a 10-line script at best-of-1 and best-of-4, GPU memory. The worker
+  already logs per-engine rates (`/health` → `rates`, `loads`).
+- **Same output.** Script match and voice match (the review's scores) must not drop. Compare a fixed script, fixed
+  seeds, before and after.
+- **No custom CUDA kernels.** The wins here are configuration, batching and compilation. Hand-written kernels break
+  on every model update and gain the last 10-20% only at a scale this studio doesn't have.
+
+## Where things stand (checked in the code)
+
+- Orpheus runs on vLLM with continuous batching (`worker/engines/orpheus.py`), FP8 where the card supports it
+  (`fp8_ok`), prefix caching on, `max_num_seqs` 64 (128 on a big pool).
+- Best-of-N takes are already generated as one batch on vLLM: `gateway.py` (~line 1822) flattens every chunk x take
+  into one list. What still scales with N is the review: Whisper and the voice match score every take.
+- The SNAC codec (codes → audio) runs eagerly, chunk by chunk (`orpheus.py` ~line 170): no `torch.compile`, no
+  CUDA graphs, no batching across chunks.
+- The vLLM pool is capped at 30 GB even on an 80 GB card (`config.vllm_pool_gb`), so most of a big card sits idle.
+- Idle models are parked in RAM and come back in seconds; nothing is kept resident just because there's room.
+- Nothing streams: the dashboard gets audio only when a whole line (or job) is done.
+
+## The plan, in order
+
+### 1. Measure (baseline)
+Add `scripts/bench_voice.py` (runs against a live worker through the dashboard API, like `scripts/make-samples.py`):
+a fixed 10-line script, Orpheus and Qwen, best-of-1 and best-of-4, review on. Record time to first line, total wall
+time, per-stage times from the job's progress, peak VRAM. Run it on L4 and on an A100; paste the numbers below.
+Done: `scripts/bench_voice.py` (needs `MCP_TOKEN` in `.secrets.local`; `--label "step 2"` names the row, `--runs 3`
+takes the median, every number lands in `bench/<date>-<gpu>.json`). L4 numbers are below; A100 still to run.
+
+### 2. Compile the audio codec
+In `orpheus.py`, wrap the SNAC decoder in `torch.inference_mode()` and `torch.compile(mode="reduce-overhead")`
+(CUDA graphs), decode all chunks of a batch together (pad to the longest), and warm it once at load with the common
+lengths. Same for the codecs of `myvoice` (shares the Orpheus path). Flag `VOICEBOX_COMPILE_CODEC`. Expected: the
+fixed per-chunk overhead mostly gone; measurable on long scripts.
+Measured (2026-10-26, L4): **not worth turning on; the flag stays off.** The codec now reports its own time (the
+job's `codec` step): 1.2 s for 40 chunks (~30 ms each) of a 26 s best-of-4 job, ~0.3 s for 10. It's ~5% of a job and
+scales with the audio, so long scripts don't change the share. `VOICEBOX_COMPILE_CODEC=1` (weight norm folded,
+compiled for any length, wave-batched decode) is built and checked on CPU, but compiling took 61 s there: roughly a
+minute on every Orpheus cold load to save at most ~1 s a voiceover. Revisit only if the codec share grows (a much
+faster generator, e.g. after step 5b).
+
+### 3. Batch the review
+The review (Whisper + voice match + naturalness) should score all takes of all chunks in one or two batched calls,
+not one per take. Whisper runs on `transformers` (`worker/engines/whisper.py`): pass all takes to its pipeline in one call with a
+`batch_size` from the card's free memory (or try faster-whisper's batched pipeline if it measures faster). This is what makes best-of-4 cost about the same as best-of-1, since generation is already batched. Update the
+dashboard's "N× slower" hint (Voiceover → Best of) to the measured cost.
+Done (2026-10-26): `VOICEBOX_BATCH_REVIEW`, on by default. Whisper hears every take of a job in one text-only call
+(the review never read the word timestamps it was asking for); clips over 30 s keep the word-timed path. The review is
+about 10× faster on the L4 with identical scores (Results). Still open: Qwen voices takes one batch of lines at a time,
+so its best-of-4 stays generation-bound (2.7× best-of-1); batching Qwen's takes is the follow-up.
+
+### 4. Use the whole big card
+On cards ≥ 70 GB: raise `vllm_pool_gb` (e.g. 45-50 GB) and `max_num_seqs`, and keep Whisper, the voice-match model
+and the enhancer resident next to it instead of parking them, so a voiceover with review never loads anything
+mid-job. Derive it from total VRAM, not the GPU name; keep the current numbers for smaller cards.
+Built (2026-10-26), two flags measured separately. `VOICEBOX_WHOLE_CARD`: 70 GB+ cards give vLLM 48 GB (was 30)
+and 256 sentences at once (was 128); smaller cards unchanged. `VOICEBOX_RESIDENT_REVIEW`, every card: Whisper (with
+the voice-match and naturalness models) and, on 70 GB+, the enhancer stay resident: never idle-unloaded, evicted last
+(step 5 found the L4 parking Whisper and Orpheus to load Qwen when Orpheus alone made room), and preloaded in the
+background at the start of a voiceover when they fit beside it without moving anything off the GPU. A running engine's
+`ensure` no longer waits on the engine lock, which a load holds for its whole duration. Colab's A100s are usually the
+40 GB model, so `WHOLE_CARD` waits for an 80 GB card to measure on; `RESIDENT_REVIEW` is measured on the L4.
+Measured (L4, Results): with Whisper unloaded, a best-of-1 voiceover went from 26.7 s (8.0 s of it waiting for
+Whisper to load before the review) to 16.1 s (Whisper preloaded beside the generation, no wait), same scores.
+`RESIDENT_REVIEW` is on by default; `WHOLE_CARD` stays off until an 80 GB card can be measured. Open: in that cold
+case the streamed first line still waits for the normal review, because Whisper is mid-preload when line 1 finishes;
+the watcher could wait for the preload instead of skipping.
+
+### 5. Stream the first audio
+Let the worker push each line (then each chunk) as soon as it's mastered: a job event stream
+(`GET /jobs/<id>/events`, server-sent events through the dashboard proxy, auth as today) and, in the Lines view, play
+line 1 while the rest generate. Mastering (loudness) needs the whole line, so stream per line first; per-chunk
+streaming with a fixed gain is a later option. Expected: first audio in about a second instead of after the whole job.
+Built (2026-10-26, `VOICEBOX_STREAM`, off until measured): the first line of a voiceover is reviewed, mastered and
+published in the job's results while the rest still generate. Orpheus drives vLLM's step loop and hands back each chunk
+the moment it finishes (same batch, same sampling, `generate()` if this vLLM lacks the API); batch engines (Qwen) voice
+the first line as their own first group. The line is published only if it passes the review and Whisper is already
+loaded; otherwise it takes the normal path, retries included. Not for studio polish (`post.enhance`) or myvoice (its
+takes are kept whole as preference pairs). The Lines view plays a running job's finished lines from the worker link
+and swaps in the archived copy when the job is done. Delivery is the existing job poll (every 1 s while running), not
+server-sent events: it adds at most a second, and SSE through Vercel would need a long-lived function per job.
+Measured on the L4 (Results): line 1 playable in ≤ 9.4 s instead of 15.7 s (Orpheus best-of-1) and in ≤ 13 s instead
+of after the whole 78-97 s job (Qwen best-of-4), same scores; on by default. "About a second" needs per-chunk audio
+inside a line (Orpheus emits ~86 tokens a second of speech, so line 1 can't finish before its own tokens do); that's
+the later option above, and step 5b (faster tokens) shrinks it further.
+
+### 5b. Speculative decoding for Orpheus
+Groq-style single-request speed on a GPU: a small draft guesses the next few audio tokens and Orpheus checks them all
+in one forward pass, so each step moves 2-3 tokens instead of 1 (same output distribution, fewer memory reads per
+token). vLLM supports it (`speculative_config`): try n-gram first (no extra model; audio codes repeat a lot), then a
+small draft (EAGLE head or a ~150-500M model trained on our own Orpheus outputs). Flag `VOICEBOX_SPEC`. Measure tokens
+per second for one request and the review scores; keep it only if the scores hold. Pairs with step 5: faster tokens
+plus streaming is what makes it feel instant.
+Built (2026-10-26): `VOICEBOX_SPEC` (`ngram`, `<method>:<model>` for a trained proposer, `0` off;
+`VOICEBOX_SPEC_TOKENS`, default 4), falling back to plain decoding if this vLLM can't start it. Jobs now report
+`decode`: codec tokens a second while vLLM decodes, and the speculative method in use.
+Measured on the L4 (Results): **n-gram is slower, so the flag stays off.** One request ran at 51 tokens a second
+against ~54 without it, and a 10-line voiceover spent 21.8 s generating instead of 13.7 s. Scores held. Orpheus's codes
+rarely repeat exactly, so the guesses miss, and checking 4 guesses for every sequence of a batch costs more than the
+hits save. What's left is a trained proposer: an EAGLE head (or a small draft) trained on Orpheus's own outputs and
+hidden states, which predicts the next codes instead of looking them up. Worth it for one request: the baseline shows
+one Orpheus sentence decodes at ~54 tokens a second on an L4, slower than real time (~86 a second), with the GPU
+~70% busy. It's a training project of its own (data from our own generations, an A100 run, vLLM's EAGLE loader).
+Trained and measured (2026-10-26, L4, job `b80135aaaf98`, `gpu` action `train_draft`): **the EAGLE draft is slower
+too, so it isn't used.** The job voiced 6000 WikiText sentences in all eight voices (4.1M codec tokens, 31 min), trained
+an EAGLE-1 head on Orpheus's hidden states (2 epochs, 736 steps, 33 min) and benchmarked vLLM plain against the head on
+held-out lines:
+
+| Codec tokens a second | Plain | Draft, 2 guesses | 3 guesses | 4 guesses |
+|---|---|---|---|---|
+| One request | **55.3** | 38.3 | 34.9 | 30.4 |
+| 10 lines together | **254** | 182 | 184 | 158 |
+| 40 together | **780** | 728 | 597 | 533 |
+
+The head learned (Orpheus's top token matched 28.7% of the time on held-out audio, from 0%) and vLLM loaded and ran it
+without errors, but only ~17% of its guesses would be accepted at the served temperature (0.65). With that, a step
+moves about 1.2 tokens, and drafting plus checking costs more than that saves: even one request lost 30%. Speculation
+would need well over half its guesses accepted on this card to break even. Audio codes are far less predictable than
+text, so this is a property of the task more than of the draft; more data would raise acceptance only modestly. The
+job's gate did its work (it switches a head on only if one request gets 10% faster without slowing ten lines), so
+nothing changed for voiceovers. `VOICEBOX_SPEC=auto` stays the default and picks up a head only if a later run beats
+plain decoding; the trainer now also reports the ceiling (Orpheus's own top probability at the served temperature),
+which says how far any draft could go.
+
+### 6. Faster cold start
+The worker comes online in about 2 min (measured 2026-10-26 on an L4: ~90 s to the worker process, ~110 s online).
+Cache the `uv` environment and `cloudflared` on the runtime disk between restarts, start the tunnel in parallel with
+the gateway, and register as soon as the tunnel is up (engines load on first use anyway).
+Done (2026-10-26). The launcher downloads cloudflared in the background (kept on the runtime disk, with the venvs,
+across worker restarts), starts the tunnel beside the gateway instead of after it, skips the 3 s wait on a fresh runtime
+and registers as soon as the tunnel is up, before prewarming. Each phase is timed into `boot.json` (`/health` → `boot`).
+Measured on a fresh L4 started from the app: **online in ~68 s instead of ~110 s** (runtime assigned in 4 s, worker code
+running at 10 s, registered 64 s after the launcher started). The phases showed what was left: 51 s of the 64 went to
+reading settings, because an app start is a bare kernel with no notebook page to answer Colab Secrets, so each lookup
+of a missing secret waited for a timeout. App starts no longer ask (everything comes in the environment and the
+dashboard's worker-env), which should bring the start to ~20 s after the runtime is assigned; that run is still to
+measure on the next fresh start.
+The other half of a cold start was the first voiceover installing its engine and downloading its weights (Orpheus
+161 s, myvoice 311 s on a fresh runtime). `VOICEBOX_PREFETCH` (on, `whisper,myvoice,qwen,orpheus`) installs those venvs
+and downloads their weights to disk in the background after a start, one at a time, with nothing loaded on the GPU and
+nothing else deleted. It pauses while a job installs, downloads or loads anything (a download under way stops and
+resumes later). Measured: Qwen, Orpheus and Whisper were on disk 111 s after the gateway started; a restart with them
+already there takes 6 s.
+
+### 7. Later, only if needed
+TensorRT-LLM for Orpheus (NVIDIA's engine; Baseten went from 7 to 16-24 real-time streams per H100 with it). Worth it
+for many simultaneous users; for two people it's a heavy setup for a modest single-take gain. Revisit after 1-6.
+Looked at after 1-6 (2026-10-26): **not built.** TensorRT-LLM compiles an engine per GPU model and per settings
+(L4, A100 40 and 80 GB would each need their own build), and Colab hands out a fresh machine each time, so the 10-20
+minute build would land on every cold start, or the built engines would have to be stored and pulled (~3-7 GB each).
+Its own install is several GB on top of vLLM, and LoRA voices (myvoice), sleep-mode parking and the step 5 streaming
+would all need redoing on it. What it buys is mostly throughput at many streams. What's still slow here is one
+request: one Orpheus sentence decodes at ~54 tokens a second on an L4, below real time. A trained proposer for step 5b
+targets that directly and keeps the vLLM path. Revisit TensorRT-LLM only with a fixed GPU (no Colab) and many
+listeners.
+
+## Results
+
+Measured with `scripts/bench_voice.py` (fixed 10-line script, seed 7, style tech, review on, subtitles off, engine
+warmed up first so loading isn't timed). Times are the worker's own (job start to finish). Peak VRAM is the whole card
+while the job ran, so it includes whatever else was resident (Whisper, the enhancer).
+
+| Step | Card | Time to first audio | 10 lines, best-of-1 | 10 lines, best-of-4 | Peak VRAM | Match / voice |
+|---|---|---|---|---|---|---|
+| Baseline · orpheus (tara) | L4 (22.5 GB) | 47.4 s | 47.4 s | 125.8 s | 18.2 GB | 0.993 / — (b1), 0.999 / — (b4) |
+| Baseline · qwen (female) | L4 (22.5 GB) | 55.4 s | 55.4 s | 177.3 s | 11.4 GB | 0.999 / 0.949 (b1), 0.999 / 0.958 (b4) |
+| Step 3 · orpheus (tara) | L4 (22.5 GB) | 15.7 s | 15.7 s | 25.2 s | 16.9 GB | 0.993 / — (b1), 0.999 / — (b4) |
+| Step 3 · qwen (female) | L4 (22.5 GB) | 29.1 s | 29.1 s | 78.3 s | 10.9 GB | 0.999 / 0.949 (b1), 0.999 / 0.958 (b4) |
+| Step 5 · orpheus (tara) | L4 (22.5 GB) | ≤ 9.4 s | 17.5 s | — | 16.2 GB | 0.999 / — (b1) |
+| Step 5 · qwen (female) | L4 (22.5 GB) | ≤ 13 s | — | 88.5 s | 11.4 GB | 0.999 / 0.955 (b4) |
+| Step 5b, n-gram · orpheus (tara) | L4 (22.5 GB) | — | 25.6 s (was 17.6) | — | 16.4 GB | 0.999 / — (b1) |
+| Qwen batch 16 · qwen (female) | L4 (22.5 GB) | — | — | 64.5 s (was 91.8) | 15.7 GB | 0.999 / 0.958 (b4) |
+| Baseline · orpheus | A100 | | | | | |
+| Baseline · qwen | A100 | | | | | |
+
+Where the time went (seconds, L4, 2026-10-26, worker 3.3.0; about 40 s of audio per run):
+
+| Case | Generating | Listening (review) | Mastering | Total | Job |
+|---|---|---|---|---|---|
+| orpheus best-of-1 | 20.1 | 26.0 | 1.2 | 47.4 | `a4e45fad30f8` |
+| orpheus best-of-4 | 21.1 | 103.5 | 1.1 | 125.8 | `9195e6439d98` |
+| qwen best-of-1 | 27.1 | 26.7 | 1.1 | 55.4 | `a7164fc66c97` |
+| qwen best-of-4 | 70.5 | 105.6 | 1.1 | 177.3 | `a281da963b32` |
+
+What the baseline says:
+
+- **The review is the biggest stage, even at one take.** About 2.6 s per take (26 s for 10, 104 s for 40), on both
+  engines, working through the takes four at a time. That's step 3, and it's worth more than the plan assumed: it
+  speeds up best-of-1 too.
+- **Orpheus generation is already batched**: 40 takes in 21 s, 10 in 20 s. With the review batched, Orpheus
+  best-of-4 should land near best-of-1.
+- **Qwen generation is not**: 2.6× longer for 4 takes (it runs two lines at a time, not on vLLM). Batching the review
+  alone leaves Qwen best-of-4 at about 1.7× best-of-1; batching Qwen's takes is a follow-up to step 3.
+- **First audio = the whole job.** Every line arrives together after mastering, so time to first audio equals the
+  total (step 5).
+- **Cold loads on a fresh runtime**: Orpheus 161 s (mostly the 7 GB download), Qwen 71 s. Step 6 territory.
+- No sentence needed a retry in any run, so the review cost above is the floor, not inflated by re-voicing.
+
+Step 3, batched review (L4, same runtime and script as the baseline, worker 3.3.0 + `VOICEBOX_BATCH_REVIEW`, the tech
+style's temperatures pinned):
+
+| Case | Generating | Listening (review) | Mastering | Total | Before | Job |
+|---|---|---|---|---|---|---|
+| orpheus best-of-1 | 11.7 | 2.7 | 1.3 | 15.7 | 47.4 | `7217c09fdc7a` |
+| orpheus best-of-4 | 15.7 | 8.2 | 1.2 | 25.2 | 125.8 | `d10fe0b0d2c3` |
+| qwen best-of-1 | 25.4 | 2.5 | 1.1 | 29.1 | 55.4 | `994034b27011` |
+| qwen best-of-4 | 67.8 | 9.3 | 1.1 | 78.3 | 177.3 | `ea50ddb6bb93` |
+
+- **Review 26 s → 2.6 s for 10 takes, 104 s → 9 s for 40**, on both engines.
+- **Same output.** Qwen (its takes come out the same for the same seed): every one of the 40 takes scored exactly as before
+  (match and voice match) and every line picked the same take. Orpheus best-of-1: the same scores line for line.
+  Orpheus best-of-4: match 0.999 both times; two lines picked take 1 instead of 2 or 3 because take 1 came out better
+  this time (vLLM sampling varies a little between runs), not because a score was read differently.
+- Orpheus best-of-4 is now 1.6× best-of-1 (was 2.65×). Qwen best-of-4 is 2.7× (was 3.2×): its generation is the rest.
+- Step 5, streamed first line (fresh L4 runtime, `VOICEBOX_STREAM` on; first audio is bounded by the dashboard-side
+  polls before and after line 1 appeared): Orpheus best-of-1 `7b870812afa4` line 1 by 9.4 s, total 17.5 s (the first
+  run on that runtime, `09b2ce7b3d6e`, took 23.4 s with line 1 by 13.4 s: totals swing ±30% between runs and runtimes,
+  so read them loosely). Qwen best-of-4 `23f0c63047f8` line 1 by 13.0 s (its first group, line 1's four takes, done at
+  8.8 s), total 88.5 s. Same 40 Qwen takes, scores and picks as `c933691ce49c`, where line 1 went the normal way
+  because Whisper had been parked: publishing early changes nothing in the result. That run is why the watcher now
+  wakes a parked Whisper when it fits beside the generation (`fits_now`). Cost: Qwen's line 1 is an extra small batch
+  (~3 s on a ~85 s job); Orpheus's step loop is the same loop `generate()` runs.
+- Step 4, review models resident (same L4 runtime, Orpheus warm, Whisper unloaded first, i.e. a voiceover after
+  Whisper idled out; its weights in the RAM cache, so its load is the 8 s warm case, 26-100 s from disk): off
+  `c8b817c8e717` loading 8.0, generating 13.4, listening 3.4, total 26.7 s; on `4496cd1d7b2a` loading 0, generating
+  11.0, listening 3.4, total 16.1 s. With it on, Whisper also stays loaded between voiceovers (never idle-unloaded,
+  evicted last), so this wait only comes back after a restart.
+- Step 5b, n-gram speculative decoding (fresh L4 runtime, Orpheus warm, plain decoding first): one request (one
+  9.4 s sentence, review off) generated in 17.1 s plain `de2c021dbcbf` (~54 tokens a second) and in 18.4 s with n-gram
+  `332bba044b6f` (50.7). Ten lines best-of-1: plain `89cffd26e902` generating 13.7, codec 0.5, listening 2.1, total
+  17.6 s (match 0.992); n-gram `6c4218b4912a` generating 21.8, codec 0.5, listening 2.1, total 25.6 s (match 0.999).
+  Plain best-of-4 on the same runtime: `041849c67d67` generating 19.0, codec 2.1, listening 7.7, total 30.1 s.
+- Qwen batch size (follow-up to step 3, `config.qwen_batch`: 16 lines a batch on an L4, was a fixed 8; same runtime,
+  Qwen warm, temperature pinned at 0.85, seed 7): best-of-4 `f4c6a9f756a5` (batch 8) generating 81.7, listening 8.8,
+  total 91.8 s; `d8b7492b3e33` (batch 16) generating 54.4, listening 8.8, total 64.5 s: **30% faster**. Match 0.999
+  both, voice match 0.957 vs 0.958 on average, peak VRAM 11.4 → 15.7 GB (with Whisper beside it). On by default; a
+  batch that runs out of memory halves itself (#63). This run was also the first on the GPU with #63's reliability
+  changes in place.
+- Step 2 check, same card, old codec path (`943477d45fe9`, Orpheus best-of-4): generating 14.7, codec 1.2,
+  listening 8.9, mastering 1.2, total 26.0 s. The codec is the smallest stage.
+- Orpheus generating was also faster in this run (11.7 s vs 20.1 s) without any change to it; compare the review
+  column, not the totals, for this step's effect on Orpheus.
+- The benchmark runs taught the dashboard "learned" temperatures for these voices (Tara 0.7, Qwen female 0.9), which
+  it adds to every job; `bench_voice.py` now pins the style's temperatures so runs stay comparable.
+
+- Trained voice (myvoice, flow), same 37-line script (9,177 characters, 56 chunks, ~9 min of audio), neutral style,
+  review + subtitles + studio polish "auto", warm runtime, timings without the model load:
+  - before, one flow chain in waves (`e1a5b408e51a`): generating 1041.0 s at 45 tokens/s, listening 13.9, enhancing
+    90.7, mastering 8.3, subtitles 113.8; ~1282 s in all. Slower than real time: nothing to play early.
+  - flow chains of up to 4 lines side by side, each chunk queued the moment its predecessor finishes (#68,
+    `ae30668af2b0`): generating 196.2 s at 234 tokens/s (**5.3×**), listening 18.4, enhancing 88.1, mastering 7.8,
+    subtitles 117.2. Lines 1-5 playable ~80 s into generating, all 37 by ~190 s (faster than real time once going).
+    Match 0.971-1.0 per chunk, as before (0.996 overall then).
+  - plus the voice model parked after generating, batched polish and batched word-timed subtitles (#69,
+    `2068ca0af590`): generating 189.2 s (245 tokens/s), listening 17.7, enhancing 106.8, mastering 7.5, subtitles
+    107.5; match 0.996, every line ≥ 0.971. Subtitles a little faster; polish slower batched (flow-matching already
+    keeps the GPU busy, padding adds work), so the enhancer went back to one line at a time.
+  - what's left after generation is polish (~90 s) and subtitles (~110 s): both bound by GPU compute, not batching.
+
+- Faster loads, studio polish and CosyVoice (2026-10-27, fresh L4):
+  - myvoice preloaded at start (`VOICEBOX_PRELOAD`): the first voiceover's loading went from a cold ~184 s to 0 s.
+    The cold load was 107.5 s of engine init, 50.9 s of it compilation; with vLLM's compiled kernels kept (R2,
+    per GPU and vLLM version, `worker/r2cache.py`) it loads in 62 s.
+  - R2 mirrors every voice repo (Whisper, Orpheus 6.6 GB, Qwen 4.5 GB, wavlm, SNAC) after the first download;
+    a fresh runtime's pull speed is still to measure.
+  - Studio polish, same 37 lines of sparsh (564 s of audio): Resemble Enhance 89.4 s, kept on 11/37 lines,
+    naturalness 4.00 -> 3.83; AP-BWE 5.4 s, kept on 37/37, voice match 1.00, naturalness unchanged, real 12-20 kHz
+    content added (-26 to -31 dB). AP-BWE is the default (`VOICEBOX_POLISH`), Resemble the fallback. Before this,
+    every "auto" polish check had failed (the whisper venv lacked torchaudio), so no earlier run kept any polish.
+  - CosyVoice 2 vs Qwen, same 10 lines, female preset: 96.6 s vs 95.1 s generating (~106 s of audio), voice match
+    0.94-0.98 vs 0.82-0.97, words heard 0.97-1.0 for both. It voices one line at a time (GPU ~14% busy), so it is no
+    faster here; it stays as an engine to choose.
+
+## Sources
+
+- Baseten, Inference Engineering, TTS models: https://www.baseten.co/inference-engineering/book/06-modalities/tts-models/
+- Baseten, Orpheus TTS on TensorRT-LLM: https://www.baseten.co/blog/canopy-labs-selects-baseten-as-preferred-inference-provider-for-orpheus-tts-model/
+- AI Engineer talk, optimizing inference for voice models: https://ai.engineer/talks/optimizing-inference-for-voice-models-in-production
+- TensorRT-LLM, torch.compile and piecewise CUDA graphs: https://nvidia.github.io/TensorRT-LLM/1.3.0rc18/features/torch_compile_and_piecewise_cuda_graph.html
