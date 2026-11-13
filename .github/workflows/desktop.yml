@@ -1,6 +1,7 @@
 # The Creavia desktop app: checked on every pull request (typecheck, Rust build, the headless self-check), built for
 # macOS (Apple Silicon and Intel), Windows and Linux on main, and released on a version tag (v*): a draft release is
 # made, every installer is uploaded to it, and only when all four built is it published, so "latest" is never half done.
+# Or from the Actions tab: Desktop → Run workflow → "release" = v0.2.0 makes the tag and the release from main.
 # Auto-update: with the TAURI_SIGNING_PRIVATE_KEY secret set, each build also makes signed update bundles and the
 # release gets latest.json, which installed apps read (src-tauri/src/updater.rs; the public key is in tauri.conf.json).
 # Without it the installers still build; they just carry no update. APPLE_* secrets (optional) notarise macOS.
@@ -12,6 +13,11 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Release this version (like v0.2.0): makes the tag and the release from this commit. Empty: just build."
+        required: false
+        default: ""
 
 concurrency: { group: "desktop-${{ github.ref }}", cancel-in-progress: true }
 
@@ -37,7 +43,7 @@ jobs:
           CREAVIA_HOME=$RUNNER_TEMP/creavia ./target/debug/creavia --self-check
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
     needs: check
     runs-on: ubuntu-22.04
     permissions: { contents: write }
@@ -45,12 +51,14 @@ jobs:
     steps:
       - id: make
         uses: actions/github-script@v7
+        env: { TAG: "${{ inputs.release }}" }
         with:
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = process.env.TAG || context.ref.replace('refs/tags/', '');
+            if (!/^v\d+\.\d+\.\d+/.test(tag)) throw new Error(`"${tag}" isn't a version like v0.2.0`);
             const found = await github.rest.repos.getReleaseByTag({ ...context.repo, tag }).catch(() => null);
             if (found) return found.data.id;
-            const { data } = await github.rest.repos.createRelease({ ...context.repo, tag_name: tag, name: `Creavia ${tag}`, draft: true,
+            const { data } = await github.rest.repos.createRelease({ ...context.repo, tag_name: tag, target_commitish: context.sha, name: `Creavia ${tag}`, draft: true,
               body: [
                 'Download the file for your computer:',
                 '- **Mac with an Apple chip** (M1 to M4): `Creavia_*_aarch64.dmg`',
@@ -110,7 +118,7 @@ jobs:
           releaseId: ${{ needs.release.outputs.id }}
           includeUpdaterJson: ${{ steps.upd.outputs.args != '' }}
           updaterJsonPreferNsis: true
-      - if: "!startsWith(github.ref, 'refs/tags/v')"
+      - if: needs.release.outputs.id == ''
         uses: actions/upload-artifact@v4
         with:
           name: creavia-${{ matrix.os }}-${{ strategy.job-index }}
@@ -123,7 +131,7 @@ jobs:
           if-no-files-found: ignore
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
     needs: [release, build]
     runs-on: ubuntu-22.04
     permissions: { contents: write }

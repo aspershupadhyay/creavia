@@ -36,5 +36,9 @@ It grew out of aspershupadhyay/voicebox-gpu; read docs/PLAN.md for the decisions
 
 ## Shipping
 
-Commit, push the branch, open a pull request to `main`, merge once checks pass. A `v*` tag makes a draft release with
-the installers (.github/workflows/desktop.yml).
+Commit, push the branch, open a pull request to `main`, merge once checks pass.
+
+A release (.github/workflows/desktop.yml): bump the version in `desktop/src-tauri/tauri.conf.json` and `Cargo.toml`,
+merge, then Actions → Desktop → Run workflow on `main` with `release` = `v0.2.0` (or push a `v0.2.0` tag). It builds
+every installer, publishes the release, and installed apps offer the update themselves (signed with the
+`TAURI_SIGNING_PRIVATE_KEY` secret; never commit that key).
