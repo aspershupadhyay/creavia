@@ -1,0 +1,34 @@
+# Debugging aid: installs the released app on Windows, opens it with WebView2's debugging port, and records what the
+# page does (scripts/winprobe.mjs). Run by hand.
+name: Windows probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/focused-brahmagupta-khr8vt]
+    paths: [".github/workflows/winprobe.yml", "scripts/winprobe.mjs"]
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install with the one command
+        shell: pwsh
+        run: |
+          $env:CREAVIA_NO_LAUNCH = "1"
+          Get-Content ./install.ps1 -Raw | Invoke-Expression
+      - name: Open it and watch
+        shell: pwsh
+        run: |
+          npm i --no-save playwright-core@1.49.1 | Out-Null
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Creavia", "$env:LOCALAPPDATA\Programs\Creavia" -Filter creavia.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          $p = Start-Process -FilePath $exe.FullName -PassThru
+          node scripts/winprobe.mjs probe
+          $p.Refresh(); Write-Host "exited: $($p.HasExited)"
+          Get-Process | Where-Object { $_.Name -match "creavia|msedgewebview2" } | Format-Table Name, Id, @{n="MB";e={[int]($_.WorkingSet64/1MB)}} | Out-String | Write-Host
+          Get-ChildItem "$env:LOCALAPPDATA\studio.creavia.app" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length | Out-String | Write-Host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: probe, path: probe }
