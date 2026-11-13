@@ -23,7 +23,6 @@ const config: NextConfig = {
   // forbid), @cfworker/json-schema on workerd. Use the Workers one everywhere, so the same build runs on both
   // (docs/MIGRATION.md step 3).
   turbopack: { root, resolveAlias: { "@modelcontextprotocol/server/_shims": `./${dep("@modelcontextprotocol/server/dist/shimsWorkerd.mjs")}` } },
-  outputFileTracingRoot: root,
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
