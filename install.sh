@@ -111,9 +111,10 @@ elif [ "$OS" = "Linux" ]; then
       # a menu entry and an icon (taken from the AppImage itself)
       APPS="$HOME/.local/share/applications"; ICONS="$HOME/.local/share/icons/hicolor/128x128/apps"
       mkdir -p "$APPS" "$ICONS"
-      ( cd "$TMP" && "$BIN" --appimage-extract '*.png' >/dev/null 2>&1 ) || true
-      ICON=$(find "$TMP/squashfs-root" -maxdepth 1 -name '*.png' 2>/dev/null | head -n 1)
-      [ -n "$ICON" ] && cp "$ICON" "$ICONS/creavia.png"
+      ( cd "$TMP" && "$BIN" --appimage-extract 'usr/share/icons/*' >/dev/null 2>&1 ) || true
+      ICON=$(find "$TMP/squashfs-root/usr/share/icons" -type f -path '*128x128/*' -name '*.png' 2>/dev/null | head -n 1)
+      [ -n "$ICON" ] || ICON=$(find "$TMP/squashfs-root" -type f -name '*.png' 2>/dev/null | head -n 1)
+      if [ -n "$ICON" ]; then cp "$ICON" "$ICONS/creavia.png" || true; fi   # a missing icon never stops the install
       cat > "$APPS/creavia.desktop" <<EOF
 [Desktop Entry]
 Name=Creavia
