@@ -4,6 +4,15 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-14: Windows didn't open (0.1.2)
+
+- **"In Windows the app didn't even open"** ("This page is having a problem · Out of Memory"). The bridge sent Tauri's
+  own `http://ipc.localhost` calls through Rust, forever. Fixed in 0.1.2, and every Windows release is now opened for
+  real in CI (the page must show something and stay small), not only `--self-check`, which never opens a window.
+- **Asked how signing in to a cloud gives the exact VoiceBox studio:** the app carries the studio's own screens
+  (`cloud/components`, grown out of VoiceBox) and talks to whatever studio address you sign in to. Signing in to
+  voiceboxstudio.pages.dev shows that studio's data in those screens.
+
 ## 2026-11-13: README, no paid certificates
 
 - **No Apple or Microsoft developer accounts for now.** Say so in the README, and show calmly, per system, what to do
