@@ -38,6 +38,8 @@ jobs:
             xattr -l "$APP" | grep -q quarantine && { echo "still quarantined"; exit 1; } || true
             "$APP/Contents/MacOS/creavia" --self-check
           elif [ "${{ matrix.format }}" = appimage ]; then
+            # a desktop has the graphics libraries an AppImage uses from the system; this bare server doesn't
+            sudo apt-get install -y libegl1 libgl1 >/dev/null
             "$HOME/.local/bin/Creavia.AppImage" --self-check
           else
             creavia --self-check
