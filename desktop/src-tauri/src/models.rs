@@ -3,6 +3,9 @@
 //!   <models_dir>/hf/<engine>/hub/models--<org>--<name>/snapshots/<commit>/…   (Hugging Face's own cache layout)
 //! so engine/gateway.py finds the weights already there and never downloads them again. Downloads resume after a
 //! dropped connection, run four files at a time, and report progress to the screen.
+//! No account and no token: every model in the catalogue is public, so like ComfyUI it just downloads. Each big file
+//! is checked against the SHA-256 its maker published (Hugging Face's LFS record) and fetched again if it doesn't match.
+//! A Hugging Face token (Models → Advanced) is optional: it only lifts the anonymous rate limit.
 use crate::{store, AppState};
 use futures_util::{stream, StreamExt};
 use parking_lot::Mutex;
@@ -82,12 +85,12 @@ pub enum Event {
     Cancelled,
 }
 
-struct Job { url: String, dest: PathBuf, size: u64, label: String, auth: bool }
+struct Job { url: String, dest: PathBuf, size: u64, label: String, auth: bool, sha256: Option<String> }
 
 #[derive(Deserialize)]
 struct HfFile { rfilename: String, #[serde(default)] size: Option<u64>, #[serde(default)] lfs: Option<HfLfs> }
 #[derive(Deserialize)]
-struct HfLfs { size: u64 }
+struct HfLfs { size: u64, #[serde(default)] sha256: Option<String> }
 #[derive(Deserialize)]
 struct HfInfo { sha: String, siblings: Vec<HfFile> }
 
@@ -99,10 +102,18 @@ async fn plan(state: &AppState, m: &Model, dir: &Path) -> Result<(Vec<Job>, Vec<
         if let Some(repo) = &s.hf {
             let mut rb = state.net.client.get(format!("https://huggingface.co/api/models/{repo}/revision/main?blobs=true"));
             if let Some(t) = &token { rb = rb.bearer_auth(t); }
-            let res = rb.send().await.map_err(|e| format!("Couldn't reach Hugging Face: {}", crate::net::why(&e)))?;
+            let mut res = rb.send().await.map_err(|e| format!("Couldn't reach Hugging Face: {}", crate::net::why(&e)))?;
+            for wait in [5u64, 15, 30] { // busy: wait and ask again, rather than ask the person for a token
+                if res.status().as_u16() != 429 { break; }
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+                let mut rb = state.net.client.get(format!("https://huggingface.co/api/models/{repo}/revision/main?blobs=true"));
+                if let Some(t) = &token { rb = rb.bearer_auth(t); }
+                res = rb.send().await.map_err(|e| format!("Couldn't reach Hugging Face: {}", crate::net::why(&e)))?;
+            }
             match res.status().as_u16() {
                 200 => {}
-                401 | 403 => return Err(format!("{repo} needs a Hugging Face token: accept its terms on huggingface.co, then add your token in Models")),
+                429 => return Err("Hugging Face is busy right now. Press Resume in a minute: nothing downloaded is lost".into()),
+                401 | 403 => return Err(format!("{repo}'s maker now asks people to accept its terms first. Accept them on huggingface.co/{repo}, then add a token under Models → Advanced")),
                 404 => return Err(format!("{repo} isn't on Hugging Face any more")),
                 c => return Err(format!("Hugging Face answered {c} for {repo}")),
             }
@@ -112,19 +123,47 @@ async fn plan(state: &AppState, m: &Model, dir: &Path) -> Result<(Vec<Job>, Vec<
             for f in info.siblings {
                 let n = f.rfilename.as_str();
                 if IGNORE.iter().any(|x| n.ends_with(x)) || n.starts_with("original/") { continue; }
-                let size = f.lfs.map(|l| l.size).or(f.size).unwrap_or(0);
-                jobs.push(Job { url: format!("https://huggingface.co/{repo}/resolve/{}/{}", info.sha, n), dest: snap.join(n), size, label: n.to_string(), auth: true });
+                let (size, sha256) = match f.lfs { Some(l) => (l.size, l.sha256), None => (f.size.unwrap_or(0), None) };
+                jobs.push(Job { url: format!("https://huggingface.co/{repo}/resolve/{}/{}", info.sha, n), dest: snap.join(n), size, label: n.to_string(), auth: true, sha256 });
             }
             refs.push((repo_dir.join("refs").join("main"), info.sha));
         } else if let (Some(url), Some(to)) = (&s.url, &s.to) {
             let size = state.net.client.head(url).send().await.ok().and_then(|r| r.content_length()).unwrap_or(0);
-            jobs.push(Job { url: url.clone(), dest: dir.join(to), size, label: to.clone(), auth: false });
+            jobs.push(Job { url: url.clone(), dest: dir.join(to), size, label: to.clone(), auth: false, sha256: None });
         }
     }
     Ok((jobs, refs))
 }
 
+/// The file's SHA-256, read off the disk without blocking the app.
+async fn sha256_of(p: PathBuf) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut f = std::fs::File::open(&p).map_err(|e| e.to_string())?;
+        let mut h = Sha256::new();
+        let mut buf = vec![0u8; 1 << 20];
+        loop { let n = f.read(&mut buf).map_err(|e| e.to_string())?; if n == 0 { break; } h.update(&buf[..n]); }
+        Ok(hex::encode(h.finalize()))
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// One file, checked: a fresh download whose SHA-256 doesn't match its maker's is thrown away and fetched once more.
 async fn fetch_one(state: &AppState, j: &Job, done: &AtomicU64, stop: &AtomicBool) -> Result<(), String> {
+    let existed = tokio::fs::metadata(&j.dest).await.is_ok();
+    for attempt in 0..2 {
+        fetch_raw(state, j, done, stop).await?;
+        let Some(want) = &j.sha256 else { return Ok(()) };
+        if existed && attempt == 0 { return Ok(()); } // checked when it was downloaded
+        if sha256_of(j.dest.clone()).await?.eq_ignore_ascii_case(want) { return Ok(()); }
+        log::warn!("{}: checksum mismatch, fetching again", j.label);
+        let _ = tokio::fs::remove_file(&j.dest).await;
+        done.fetch_sub(j.size.min(done.load(Ordering::Relaxed)), Ordering::Relaxed);
+    }
+    Err(format!("{} arrived damaged twice. Check your connection, then press Resume", j.label))
+}
+
+async fn fetch_raw(state: &AppState, j: &Job, done: &AtomicU64, stop: &AtomicBool) -> Result<(), String> {
     if let Ok(md) = tokio::fs::metadata(&j.dest).await { if j.size == 0 || md.len() == j.size { done.fetch_add(md.len(), Ordering::Relaxed); return Ok(()); } }
     if let Some(p) = j.dest.parent() { tokio::fs::create_dir_all(p).await.map_err(|e| e.to_string())?; }
     let part = j.dest.with_file_name(format!("{}.part", j.dest.file_name().unwrap().to_string_lossy()));
@@ -140,6 +179,8 @@ async fn fetch_one(state: &AppState, j: &Job, done: &AtomicU64, stop: &AtomicBoo
             let res = rb.send().await.map_err(|e| crate::net::why(&e))?;
             let code = res.status().as_u16();
             if code == 416 { return Ok(()); } // already whole
+            if code == 429 || code >= 500 { return Err(format!("busy ({code})")); } // retried below
+            if code == 401 || code == 403 { return Err(format!("{} is gated by its maker: accept its terms on Hugging Face, then add a token under Models → Advanced", j.label)); }
             if !(200..300).contains(&code) { return Err(format!("HTTP {code} for {}", j.label)); }
             if code == 200 && have > 0 { done.fetch_sub(have, Ordering::Relaxed); have = 0; } // no ranges: from the start
             let mut f = tokio::fs::OpenOptions::new().create(true).append(have > 0).write(true).truncate(have == 0).open(&part).await.map_err(|e| e.to_string())?;
@@ -157,7 +198,7 @@ async fn fetch_one(state: &AppState, j: &Job, done: &AtomicU64, stop: &AtomicBoo
         match attempt {
             Ok(()) => break,
             Err(e) if e == "cancelled" => return Err(e),
-            Err(e) if tries < 4 => { tries += 1; log::warn!("{}: {e}; retrying", j.label); tokio::time::sleep(Duration::from_secs(2u64.pow(tries))).await; }
+            Err(e) if tries < 8 && !e.contains("gated") => { tries += 1; log::warn!("{}: {e}; retrying", j.label); tokio::time::sleep(Duration::from_secs(2u64.pow(tries.min(5)))).await; }
             Err(e) => return Err(e),
         }
     }

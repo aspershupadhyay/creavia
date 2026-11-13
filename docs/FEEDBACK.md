@@ -4,6 +4,14 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-13: Creavia, release 0.1
+
+- **Updates without reinstalling.** A new release reaches installed apps by itself: one click, it restarts.
+- **A guide in the app that a child can follow**: pictures, animation, clear navigation, reachable before signing in
+  and after. How to use the app, and how to host it online, step by step.
+- **A premium onboarding**, not a two-step form.
+- **Model downloads just work, like ComfyUI:** never ask for a Hugging Face account or token.
+
 ## 2026-11-13: Creavia
 
 - **The name is Creavia**, not VoiceBox: the product is more than voices (create, publish, grow).

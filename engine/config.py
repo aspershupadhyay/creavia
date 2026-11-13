@@ -44,7 +44,10 @@ PARK_MIN = float(os.environ.get("VOICEBOX_PARK_MIN") or (0 if HIGH_RAM else 60))
 IDLE_PARK = os.environ.get("VOICEBOX_IDLE_PARK", "1" if HIGH_RAM else "0") == "1"  # idle: park instead of stop
 RAM_RESERVE_GB = 16.0                                          # never park when it would leave less RAM free than this
 NO_PARK = {"wan", "wan14", "ltx", "animate"}                   # video engines that page themselves in and out (cpu offload)
-DISK_RESERVE_GB = 12.0                                         # keep this much disk free; evict old weights first
+# On a cloud GPU (Colab, Kaggle) the disk is scratch: keep 12 GB free and evict old weights first. On someone's own
+# computer (the Creavia app sets CREAVIA_LOCAL=1) their files are theirs: keep 1 GB free and never delete anything.
+LOCAL = os.environ.get("CREAVIA_LOCAL") == "1"
+DISK_RESERVE_GB = 1.0 if LOCAL else 12.0
 
 # Inference speed-ups (docs/INFERENCE.md): each behind a flag, default on only once measured on a real GPU.
 # Step 3: the review hears every take of a voiceover in one batched, text-only Whisper call instead of four word-timed

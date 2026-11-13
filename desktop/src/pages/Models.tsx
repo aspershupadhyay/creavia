@@ -106,6 +106,7 @@ function ModelCard({ m, st, sys, onChange }: { m: ModelEntry; st?: ModelState; s
 }
 
 function HfToken() {
+  const [open, setOpen] = useState(false);
   const { settings, refresh } = useConn();
   const [v, setV] = useState("");
   const save = async (val: string) => {
@@ -114,12 +115,13 @@ function HfToken() {
   };
   return (
     <div className="cr-card cr-setting">
-      <div className="cr-setting-head"><Key size={18} weight="duotone" /><div><b>Hugging Face token</b><span>Only for gated models (ones that ask you to accept terms first) and faster downloads. Kept in this computer’s keychain.</span></div></div>
+      <div className="cr-setting-head"><Key size={18} weight="duotone" /><div><b>Advanced: Hugging Face token</b><span>Not needed: every model here downloads without an account. Add one only if Hugging Face asks you to slow down, or a maker starts asking people to accept terms. Kept in this computer’s keychain.</span></div></div>
+      {!open && !settings?.hf_token_set ? <button className="sm ghost" style={{ alignSelf: "flex-start" }} onClick={() => setOpen(true)}>Add a token</button> : (
       <div className="cr-row">
         <input type="password" aria-label="Hugging Face token" placeholder={settings?.hf_token_set ? "A token is saved" : "hf_…"} value={v} onChange={(e) => setV(e.target.value)} />
         <button className="sm" disabled={!v.trim()} onClick={() => save(v.trim())}>Save</button>
         {settings?.hf_token_set && <button className="sm ghost" onClick={() => save("")}>Remove</button>}
-      </div>
+      </div>)}
     </div>
   );
 }
@@ -167,7 +169,7 @@ export default function Models() {
 
   return (
     <div className="page">
-      <PageHeader title="Models" sub="Nothing comes bundled. Download the models you want, straight from their makers, and they run on this computer." scene={false} />
+      <PageHeader title="Models" sub="Nothing comes bundled. Download the models you want, straight from their makers: no account, no token. They run on this computer." scene={false} />
       <div className="cr-stats">
         <div className="cr-stat"><span>Downloaded</span><b className="mono">{have.length}<em>/{cat.length || "—"}</em></b>{active > 0 && <i className="cr-live">{active} downloading</i>}</div>
         <div className="cr-stat"><span>Disk used</span><b className="mono">{gb(used)}</b><i>{sys ? `${Math.round(sys.disk_free_gb)} GB free` : ""}</i></div>

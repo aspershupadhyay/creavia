@@ -2,12 +2,13 @@
 // Cloud is connected; this computer's pages (src/pages) work with or without one.
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Navigate, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { Cpu, CloudArrowUp, HardDrives, Plugs, Sparkle } from "@phosphor-icons/react";
+import { BookOpenText, Cpu, CloudArrowUp, HardDrives, Plugs, Sparkle } from "@phosphor-icons/react";
 import Shell, { ShellHost } from "@/components/Shell";
 import AnalyticsShell from "@/components/AnalyticsShell";
 import { useConn } from "./shell/conn";
 import { LocalFrame } from "./shell/LocalFrame";
 import { Toaster } from "./shell/toast";
+import { UpdateCard, useUpdateChecks } from "./shell/updates";
 import { Vee } from "./shell/Vee";
 
 const Welcome = lazy(() => import("./pages/Welcome"));
@@ -17,6 +18,7 @@ const Models = lazy(() => import("./pages/Models"));
 const Engine = lazy(() => import("./pages/Engine"));
 const Mcp = lazy(() => import("./pages/Mcp"));
 const Deploy = lazy(() => import("./pages/Deploy"));
+const Guide = lazy(() => import("./pages/Guide"));
 
 const Home = lazy(() => import("@/components/Home"));
 const Voices = lazy(() => import("@/components/Voices"));
@@ -54,6 +56,7 @@ const HOST = {
     { href: "/local/engine", name: "Engine", Icon: Sparkle, mv: "wand" },
     { href: "/local/mcp", name: "MCP", Icon: Plugs, mv: "gear" },
     { href: "/local/deploy", name: "Deploy a cloud", Icon: CloudArrowUp, mv: "files" },
+    { href: "/guide", name: "Guide", Icon: BookOpenText, mv: "files" },
   ],
 };
 
@@ -95,6 +98,7 @@ function useGo() {
 
 export default function App() {
   useGo();
+  useUpdateChecks();
   return (
     <>
       <Suspense fallback={<Loading />}>
@@ -102,6 +106,8 @@ export default function App() {
           <Route path="/" element={<Start />} />
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/login" element={<Connect />} />
+          <Route path="/guide" element={<Guide />} />
+          <Route path="/guide/:chapter" element={<Guide />} />
           <Route element={<Frame />}>
             <Route path="/local" element={<ThisComputer />} />
             <Route path="/local/models" element={<Models />} />
@@ -141,6 +147,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <UpdateCard />
       <Toaster />
     </>
   );

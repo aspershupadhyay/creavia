@@ -8,6 +8,7 @@ mod net;
 mod selfcheck;
 mod store;
 mod sys;
+mod updater;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -87,6 +88,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .register_asynchronous_uri_scheme_protocol("cloud", move |_ctx, request, responder| {
             let st = for_scheme.clone();
@@ -130,6 +132,7 @@ pub fn run() {
             models::models_catalog, models::models_state, models::model_download, models::model_cancel, models::model_delete,
             engine::engine_status, engine::engine_install, engine::engine_start, engine::engine_stop, engine::engine_logs,
             mcp::mcp_status, mcp::mcp_start, mcp::mcp_stop, mcp::mcp_rotate,
+            updater::update_check, updater::update_install, updater::app_version,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Creavia");

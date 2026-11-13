@@ -45,9 +45,31 @@
     "category": "Productivity",
     "shortDescription": "Create, publish and grow",
     "longDescription": "Creavia is a creator studio: voiceovers in your own voice, clean-up, subtitles, images, files, posts, publishing and analytics. Run the AI models on your own computer (downloaded only when you choose) or on your own cloud.",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "resources": { "../../engine/": "engine/" },
-    "copyright": "Creavia"
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../engine/": "engine/"
+    },
+    "copyright": "Creavia",
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "11.0"
+    }
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFNEJDQTUyMzUyRDJGOTcKUldTWEx5MDFVc3BMN3JNM0Y1RHdPS3lOOTcrb3lGWGU0UldMVkpIdEN4RVZXL3M2ODVNMUYzUngK",
+      "endpoints": [
+        "https://github.com/aspershupadhyay/creavia/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
 }

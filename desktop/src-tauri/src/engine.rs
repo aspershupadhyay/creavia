@@ -183,7 +183,7 @@ pub async fn start(state: &AppState, dir: PathBuf, link_cloud: bool, worker_secr
         if let Some(d) = PathBuf::from(uv).parent() { path = std::env::join_paths(std::iter::once(d.to_path_buf()).chain(std::env::split_paths(&path))).unwrap_or(path); }
     }
     cmd.current_dir(&dir).env("VOICEBOX_HOME", &home).env("VOICEBOX_STARTED_BY", "app").env("PATH", path)
-        .env("PYTHONUNBUFFERED", "1").stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+        .env("PYTHONUNBUFFERED", "1").env("CREAVIA_LOCAL", "1").stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     if let Some(t) = state.store.secret("hf_token") { cmd.env("HF_TOKEN", t); }
     #[cfg(unix)]
     cmd.process_group(0);

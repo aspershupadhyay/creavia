@@ -662,6 +662,9 @@ class Engines:
         free = shutil.disk_usage(HOME).free / 1e9
         if free >= need:
             return
+        if C.LOCAL:  # someone's own computer: their other models and their Hugging Face cache are not ours to delete
+            raise RuntimeError(f"not enough disk for {name}: it needs about {need:.0f} GB free and {free:.0f} GB is left. "
+                               "Free some space, or move the models folder to a bigger disk (Creavia → Models)")
         legacy = os.path.expanduser("~/.cache/huggingface")
         keep = {cache_dir(name)} | {cache_dir(n) for n in self.procs}  # a shared folder (CACHE_ALIAS) counts for both
         victims = ([legacy] if os.path.isdir(legacy) else []) + list(dict.fromkeys(

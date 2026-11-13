@@ -1,7 +1,7 @@
 // The frame before a studio is connected: this computer's pages, and the studio's pages waiting behind "Connect".
 // Once connected, the studio's own frame (cloud/components/Shell.tsx) takes over, with these pages in its sidebar.
 import { Link, useLocation } from "react-router-dom";
-import { ChartLineUp, Cpu, CloudArrowUp, Globe, HardDrives, Lock, MagicWand, Plugs, Sparkle } from "@phosphor-icons/react";
+import { BookOpenText, ChartLineUp, Cpu, CloudArrowUp, Globe, HardDrives, Lock, MagicWand, Plugs, Sparkle } from "@phosphor-icons/react";
 import { Logo } from "@/components/art";
 
 export const LOCAL_NAV = [
@@ -10,6 +10,7 @@ export const LOCAL_NAV = [
   { href: "/local/engine", name: "Engine", Icon: Sparkle, mv: "wand" },
   { href: "/local/mcp", name: "MCP", Icon: Plugs, mv: "gear" },
   { href: "/local/deploy", name: "Deploy a cloud", Icon: CloudArrowUp, mv: "files" },
+  { href: "/guide", name: "Guide", Icon: BookOpenText, mv: "files" },
 ];
 
 const LOCKED = ["Home", "Voices", "Posts", "Files", "Voiceover", "Clean-up", "Subtitles", "Images", "Download"];

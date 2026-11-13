@@ -1,13 +1,14 @@
 // This computer at a glance: the machine, the engine, the models, the MCP and the studio connection, with the next
 // step for each.
 import { Link } from "react-router-dom";
-import { ArrowRight, CloudArrowUp, Cpu, Globe, HardDrives, Memory, Plugs, Sparkle } from "@phosphor-icons/react";
+import { ArrowRight, ArrowsClockwise, BookOpenText, CloudArrowUp, Cpu, Globe, HardDrives, Memory, Plugs, Sparkle } from "@phosphor-icons/react";
 import { PageHeader } from "@/components/ui";
 import { engineStatus, inTauri, mcpStatus, modelsState, systemInfo, type EngineStatus, type McpStatus, type ModelState, type SystemInfo } from "../bridge/native";
 import { useConn } from "../shell/conn";
 import { useDownloads } from "../shell/downloads";
 import { gb, usePoll } from "../shell/hooks";
 import { Vee } from "../shell/Vee";
+import { checkForUpdate, installUpdate, useUpdate } from "../shell/updates";
 
 const off = <T,>() => Promise.reject<T>(new Error("preview"));
 
@@ -18,6 +19,7 @@ export default function ThisComputer() {
   const mcp = usePoll<McpStatus>(() => (inTauri() ? mcpStatus() : off()), 5000);
   const models = usePoll<ModelState[]>(() => (inTauri() ? modelsState() : off()), 6000);
   const dls = useDownloads();
+  const up = useUpdate();
   const s = sys.data, g = s?.gpus[0];
   const have = (models.data ?? []).filter((m) => m.complete).length;
   const busy = Object.values(dls).some((d) => d.state === "running") || !!eng.data?.running;
@@ -69,6 +71,23 @@ export default function ThisComputer() {
         <div><HardDrives size={16} weight="duotone" /><span>Free disk</span><b>{s ? `${Math.round(s.disk_free_gb)} GB` : "—"}</b></div>
         <div><span className="cr-dotlabel">uv</span><span>Python manager</span><b className="mono">{s ? s.uv ?? "Installed for you at setup" : "—"}</b></div>
         <div><span className="cr-dotlabel">v</span><span>Creavia</span><b className="mono">{s?.version ?? "—"} · {s?.os}</b></div>
+      </div>
+
+      <div className="cr-twin">
+        <div className="cr-card cr-upd">
+          <span className="cr-upd-ic"><ArrowsClockwise size={18} weight="bold" className={up.phase === "checking" || up.phase === "installing" ? "spin" : ""} /></span>
+          <div>
+            <b>{up.phase === "ready" ? `Creavia ${up.info.version} is ready` : up.phase === "installing" ? "Updating…" : "Updates install themselves"}</b>
+            <span>{up.phase === "ready" ? "One click: it installs and restarts in seconds." : up.phase === "idle" && up.error ? "Couldn’t check just now. It tries again by itself." : "Creavia checks for new versions on its own. No reinstalling, ever."}</span>
+          </div>
+          {up.phase === "ready" ? <button className="sm cr-cta" onClick={installUpdate}>Update</button>
+            : <button className="sm ghost" disabled={up.phase !== "idle" || !inTauri()} onClick={() => checkForUpdate(true)}>{up.phase === "checking" ? "Checking…" : "Check now"}</button>}
+        </div>
+        <Link to="/guide" state={{ from: "/local" }} className="cr-card cr-upd cr-guide-card">
+          <span className="cr-upd-ic"><BookOpenText size={18} weight="duotone" /></span>
+          <div><b>The Creavia guide</b><span>Every step with pictures: models, the engine, voiceovers, putting your studio online.</span></div>
+          <ArrowRight size={16} />
+        </Link>
       </div>
 
       {conn?.mode !== "cloud" && (

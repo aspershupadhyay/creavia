@@ -81,3 +81,10 @@ export type AppSettings = { hf_token_set: boolean; models_dir: string; mcp_autos
   onboarded: boolean; launch_at_login: boolean };
 export const appSettings = () => call<AppSettings>("settings_get");
 export const saveSettings = (patch: Partial<AppSettings> & { hf_token?: string }) => call<AppSettings>("settings_set", { patch });
+
+// ── updates (signed, from GitHub Releases; updater.rs) ─────────────────────────────────────────────────────────────
+export type UpdateInfo = { version: string; current: string; notes: string | null; date: string | null };
+export type UpdateEvent = { kind: "started"; total: number | null } | { kind: "chunk"; done: number } | { kind: "installing" };
+export const updateCheck = () => call<UpdateInfo | null>("update_check");
+export const updateInstall = (on: (e: UpdateEvent) => void) => call<void>("update_install", { onEvent: channel(on) });
+export const appVersion = () => call<string>("app_version");

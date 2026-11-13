@@ -1,6 +1,9 @@
 # The Creavia desktop app: checked on every pull request (typecheck, Rust build, the headless self-check), built for
-# macOS (Apple Silicon and Intel), Windows and Linux on main, and published as a draft release on a version tag (v*).
-# Signing is optional: add APPLE_* (notarised macOS) and TAURI_SIGNING_PRIVATE_KEY (auto-update) as repository secrets.
+# macOS (Apple Silicon and Intel), Windows and Linux on main, and released on a version tag (v*): a draft release is
+# made, every installer is uploaded to it, and only when all four built is it published, so "latest" is never half done.
+# Auto-update: with the TAURI_SIGNING_PRIVATE_KEY secret set, each build also makes signed update bundles and the
+# release gets latest.json, which installed apps read (src-tauri/src/updater.rs; the public key is in tauri.conf.json).
+# Without it the installers still build; they just carry no update. APPLE_* secrets (optional) notarise macOS.
 name: Desktop
 on:
   pull_request:
@@ -33,9 +36,37 @@ jobs:
           cargo build
           CREAVIA_HOME=$RUNNER_TEMP/creavia ./target/debug/creavia --self-check
 
-  build:
-    if: github.event_name != 'pull_request'
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: check
+    runs-on: ubuntu-22.04
+    permissions: { contents: write }
+    outputs: { id: "${{ steps.make.outputs.result }}" }
+    steps:
+      - id: make
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const found = await github.rest.repos.getReleaseByTag({ ...context.repo, tag }).catch(() => null);
+            if (found) return found.data.id;
+            const { data } = await github.rest.repos.createRelease({ ...context.repo, tag_name: tag, name: `Creavia ${tag}`, draft: true,
+              body: [
+                'Download the file for your computer:',
+                '- **Mac with an Apple chip** (M1 to M4): `Creavia_*_aarch64.dmg`',
+                '- **Mac with Intel**: `Creavia_*_x64.dmg`',
+                '- **Windows**: `Creavia_*_x64-setup.exe`',
+                '- **Linux**: `Creavia_*_amd64.AppImage` or `.deb`',
+                '',
+                'First time on a Mac: right-click Creavia, choose Open, then Open. On Windows: More info, then Run anyway. The in-app guide shows every step.',
+                'Already have Creavia? It updates itself: no need to download this.',
+              ].join('\n') });
+            return data.id;
+
+  build:
+    # on main there's no release job: build anyway (it's skipped, not failed)
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.check.result == 'success' && needs.release.result != 'failure' }}
+    needs: [check, release]
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +88,11 @@ jobs:
       - if: startsWith(matrix.os, 'ubuntu')
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev
       - run: npm install --no-audit --no-fund
+      - name: Update bundles only when the signing key is there
+        id: upd
+        shell: bash
+        env: { KEY: "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" }
+        run: if [ -n "$KEY" ]; then echo "args=--config src-tauri/tauri.updater.conf.json" >> "$GITHUB_OUTPUT"; fi
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,12 +103,13 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
-          args: ${{ matrix.args }}
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: "Creavia ${{ github.ref_name }}"
-          releaseDraft: true
+          args: ${{ matrix.args }} ${{ steps.upd.outputs.args }}
+          releaseId: ${{ needs.release.outputs.id }}
+          includeUpdaterJson: ${{ steps.upd.outputs.args != '' }}
+          updaterJsonPreferNsis: true
       - if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
@@ -84,3 +121,14 @@ jobs:
             desktop/src-tauri/target/**/release/bundle/**/*.AppImage
             desktop/src-tauri/target/**/release/bundle/**/*.deb
           if-no-files-found: ignore
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release, build]
+    runs-on: ubuntu-22.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({ ...context.repo, release_id: Number('${{ needs.release.outputs.id }}'), draft: false, make_latest: 'true' });

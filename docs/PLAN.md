@@ -30,18 +30,27 @@ cloud in one click, models they choose. Decisions and what's left, in order. Tic
       frame before a studio is connected, tray, single instance, macOS overlay title bar
 - [x] First run (Welcome): where the AI runs, starter models picked for this machine's GPU
 - [x] Connect: sign in, new account, or access token; session kept by Rust
-- [x] Models: catalogue, GPU fit, licence, resumable parallel downloads with progress, delete, folder, HF token
+- [x] Models: catalogue, GPU fit, licence, resumable parallel downloads with progress, delete, folder, optional HF token
 - [x] Engine: uv setup, start/stop, logs, lend to studio
 - [x] MCP: local server (7 local tools + the studio's), snippets for 6 clients, token rotation
 - [x] Deploy: Neon → Deploy to Cloudflare → Connect; terminal path
 - [x] `creavia --self-check[=full]`: proven end to end on Linux (Kokoro downloaded, engine set up, a line voiced via MCP)
 - [x] CI: desktop checks + builds for macOS (arm64, x64), Windows, Linux; cloud checks + optional deploy
+- [x] Updates in the app (updater.rs, shell/updates.tsx): signed bundles from GitHub Releases, checked on launch and
+      every 4 hours, one click to install and restart. The release job publishes only when every platform built.
+- [x] The guide (`/guide`, pages/Guide.tsx, guide/content.ts, guide/art.tsx): 11 chapters with drawn scenes, steps
+      with buttons that do the step, a key maker for hosting, search, read ticks; open before and after sign-in
+- [x] Onboarding: goals → a look at the machine → where AI runs → models for those goals and that GPU → online or
+      not → done
+- [x] Downloads need no token: public models only, SHA-256 checked against the maker's record, busy servers waited
+      out; the token is an optional Advanced setting
 
 ## Next, in order
 
-1. **Ship a release:** merge to `main`, tag `v0.1.0`, the Desktop workflow makes the installers. Unsigned at first
-   (macOS: right-click → Open). Then signing: Apple Developer ID + notarisation, a Windows certificate, and the Tauri
-   updater key (secrets in `.github/workflows/desktop.yml`).
+1. **Signing.** v0.1.0 is out unsigned (macOS ad-hoc: right-click → Open; Windows: More info → Run anyway). Add the
+   updater key as the `TAURI_SIGNING_PRIVATE_KEY` secret so every later tag ships signed updates (the public half is in
+   tauri.conf.json; lose the private half and installed apps can't update). Then an Apple Developer ID + notarisation
+   (`APPLE_*` secrets) and a Windows code-signing certificate, to drop the first-launch warnings.
 2. **Multi-user studios.** Today a studio is one team (the founder and the emails they allow). For a public service:
    a workspace id on every row and R2 prefix, sign-up with plans and limits (GPU minutes, storage), per-workspace
    YouTube/Instagram connections (Google and Meta app review), per-workspace keys. Until then, everyone deploys their

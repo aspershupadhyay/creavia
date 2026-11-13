@@ -2,7 +2,7 @@
 // new account on a studio that's just been deployed). The session stays in Rust (the keychain), never in the web view.
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CloudArrowUp, Eye, EyeSlash, Key, SignIn, UserPlus } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, CloudArrowUp, Eye, EyeSlash, Key, SignIn, UserPlus, BookOpenText } from "@phosphor-icons/react";
 import { inTauri, signIn, signOutCloud, useToken } from "../bridge/native";
 import { useConn } from "../shell/conn";
 import { Vee } from "../shell/Vee";
@@ -45,6 +45,7 @@ export default function Connect() {
         <h1>Connect your studio</h1>
         <p>Your Creavia Cloud keeps posts, files, voices, publishing and analytics, for you and your team, on any device. Its MCP lets Claude, ChatGPT and Gemini work in it.</p>
         <Link to="/local/deploy" className="cr-mini-card"><CloudArrowUp size={18} weight="duotone" /><span><b>No cloud yet?</b> Deploy one to your Cloudflare account in one click.</span><ArrowRight size={14} /></Link>
+        <Link to="/guide/host" state={{ from: "/login" }} className="cr-mini-card"><BookOpenText size={18} weight="duotone" /><span><b>New to this?</b> The guide shows every step, with pictures.</span><ArrowRight size={14} /></Link>
       </aside>
 
       <form className="cr-connect-form" onSubmit={go}>
