@@ -37,6 +37,10 @@ log = "0.4"
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
+[target.'cfg(windows)'.dependencies]
+# the same WebView2 bindings Tauri uses, to heal a crashed page (window.rs)
+webview2-com = "0.39"
+
 [profile.release]
 codegen-units = 1
 lto = true

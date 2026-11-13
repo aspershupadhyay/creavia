@@ -9,6 +9,7 @@ mod selfcheck;
 mod store;
 mod sys;
 mod updater;
+mod window;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -95,6 +96,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move { responder.respond(net::serve_scheme(&st, request).await); });
         })
         .setup(|app| {
+            window::create_main(app)?;
             // the tray: open the studio, and quit (which also stops the engine)
             let open = MenuItem::with_id(app, "open", "Open Creavia", true, None::<&str>)?;
             let models = MenuItem::with_id(app, "models", "Models…", true, None::<&str>)?;
