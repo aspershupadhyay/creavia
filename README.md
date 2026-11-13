@@ -74,7 +74,38 @@ flowchart TB
 
 ## ⬇ Install
 
-Download the file for your computer from **[the latest release](https://github.com/aspershupadhyay/creavia/releases/latest)**:
+### One command
+
+**🍎 macOS and 🐧 Linux** · in Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aspershupadhyay/creavia/main/install.sh | sh
+```
+
+**🪟 Windows** · in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/aspershupadhyay/creavia/main/install.ps1 | iex
+```
+
+It picks the right file for your computer, installs it, and opens Creavia. Installed this way there are **no security
+pop-ups** to click through: those only appear for files downloaded in a browser.
+
+| | Where it goes |
+|---|---|
+| macOS | `/Applications/Creavia.app` (Apple chip or Intel, picked for you) |
+| Ubuntu, Debian, Mint | the `.deb`, through apt (asks for your password) |
+| Fedora, RHEL, openSUSE | the `.rpm`, through dnf or zypper (asks for your password) |
+| Any other Linux | the AppImage in `~/.local/bin`, with a menu entry |
+| Windows 10 / 11 | installed for you (no admin needed), with a Start menu entry |
+
+<sub>Want to read a script before running it? [install.sh](install.sh) · [install.ps1](install.ps1).
+Linux options: `CREAVIA_FORMAT=appimage` (or `deb`, `rpm`) before `sh` picks the package; `CREAVIA_VERSION=v0.1.1` installs
+a given release.</sub>
+
+### Or download it yourself
+
+Take the file for your computer from **[the latest release](https://github.com/aspershupadhyay/creavia/releases/latest)**:
 
 | Your computer | The file to take |
 |---|---|
@@ -86,8 +117,8 @@ Download the file for your computer from **[the latest release](https://github.c
 | 🐧 Fedora, RHEL, openSUSE | `Creavia-x.y.z-1.x86_64.rpm` |
 
 > [!NOTE]
-> **Creavia isn't signed with a paid Apple or Microsoft developer certificate (yet).** It's free and open source, so the
-> first time you open it, your computer asks whether you trust it. That's expected: say yes once, as shown below, and it
+> **Creavia isn't signed with a paid Apple or Microsoft developer certificate (yet).** It's free and open source, so when
+> you download it in a browser, the first time you open it your computer asks whether you trust it. That's expected: say yes once, as shown below, and it
 > never asks again. Updates are still checked: each one is signed with Creavia's own key and verified before it installs.
 
 <details open>

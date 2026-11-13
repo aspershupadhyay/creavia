@@ -1,0 +1,81 @@
+# The one-command installers (install.sh, install.ps1), tested on real machines: each installs the newest release the
+# way a person would, then the installed app runs its headless self-check. Runs when the scripts change, after every
+# Desktop release, and by hand.
+name: Install
+on:
+  push:
+    branches: [main]
+    paths: ["install.sh", "install.ps1", ".github/workflows/install.yml"]
+  pull_request:
+    paths: ["install.sh", "install.ps1", ".github/workflows/install.yml"]
+  workflow_run:
+    workflows: [Desktop]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  unix:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS (Apple chip), os: macos-latest, format: "" }
+          - { name: Ubuntu (.deb), os: ubuntu-latest, format: "" }
+          - { name: Ubuntu (AppImage), os: ubuntu-latest, format: appimage }
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with the one command
+        env: { CREAVIA_NO_LAUNCH: "1", CREAVIA_FORMAT: "${{ matrix.format }}" }
+        run: sh install.sh
+      - name: The installed app works
+        env: { CREAVIA_HOME: "${{ runner.temp }}/creavia", APPIMAGE_EXTRACT_AND_RUN: "1" }
+        run: |
+          if [ "$(uname)" = Darwin ]; then
+            APP=/Applications/Creavia.app; [ -d "$APP" ] || APP="$HOME/Applications/Creavia.app"
+            xattr -l "$APP" | grep -q quarantine && { echo "still quarantined"; exit 1; } || true
+            "$APP/Contents/MacOS/creavia" --self-check
+          elif [ "${{ matrix.format }}" = appimage ]; then
+            "$HOME/.local/bin/Creavia.AppImage" --self-check
+          else
+            creavia --self-check
+          fi
+
+  fedora:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    name: Fedora (.rpm)
+    runs-on: ubuntu-latest
+    container: fedora:41
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with the one command
+        env: { CREAVIA_NO_LAUNCH: "1" }
+        run: sh install.sh
+      - name: The installed app works
+        env: { CREAVIA_HOME: /tmp/creavia }
+        run: creavia --self-check
+
+  windows:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with the one command
+        shell: pwsh
+        run: |
+          $env:CREAVIA_NO_LAUNCH = "1"
+          Get-Content ./install.ps1 -Raw | Invoke-Expression
+      - name: The installed app works
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Creavia", "$env:LOCALAPPDATA\Programs\Creavia", "$env:ProgramFiles\Creavia" -Filter *.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notlike "uninstall*" } | Select-Object -First 1
+          if (-not $exe) { Get-ChildItem "$env:LOCALAPPDATA" -Directory | Select-Object -ExpandProperty Name; throw "Creavia's exe not found" }
+          Write-Host "Installed: $($exe.FullName)"
+          $env:CREAVIA_HOME = "$env:RUNNER_TEMP\creavia"
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--self-check" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "self-check failed ($($p.ExitCode))" }
+          Write-Host "self-check passed"
