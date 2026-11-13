@@ -19,6 +19,18 @@ export function sql() {
   return (client ??= neon(URL_()));
 }
 
+let schema: Promise<void> | null = null;
+/** A fresh studio makes its own tables (db/*.sql via lib/schema.ts, all IF NOT EXISTS), once per server instance, so
+ *  one-click deploys need no terminal step. Called where a new studio is first used: sign-in, the workspace API, MCP. */
+export function ensureSchema() {
+  if (!hasDb()) return Promise.resolve();
+  return (schema ??= (async () => {
+    const { SCHEMA } = await import("./schema");
+    const q = sql();
+    for (const stmt of SCHEMA) await q.query(stmt);
+  })().catch((e) => { schema = null; throw e; }));
+}
+
 const TABLES = {
   posts: ["title", "status", "platforms", "script", "caption", "notes", "due_at", "posted_at", "link", "owner_id", "owner_name", "assignee_id", "assignee_name", "jobs", "cover"],
   comments: ["post_id", "body", "author_id", "author_name"],

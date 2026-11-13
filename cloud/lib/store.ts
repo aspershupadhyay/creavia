@@ -22,12 +22,12 @@ type R2Bucket = {
 };
 /** The Worker's R2 binding, or null off Cloudflare (next dev, scripts) or when the bucket names don't match. */
 function bound(): R2Bucket | null {
-  if ((process.env.R2_BUCKET || "voicebox") !== "voicebox" || process.env.R2_ENDPOINT) return null;
+  if ((process.env.R2_BUCKET || "creavia") !== "creavia" || process.env.R2_ENDPOINT) return null;
   const ctx = (globalThis as Record<symbol, { env?: { BUCKET?: R2Bucket } } | undefined>)[Symbol.for("__cloudflare-context__")];
   return ctx?.env?.BUCKET ?? null;
 }
 
-const BUCKET = process.env.R2_BUCKET || "voicebox";
+const BUCKET = process.env.R2_BUCKET || "creavia";
 // R2_ENDPOINT (optional) points at another S3-compatible store, e.g. a local one for testing
 const ENDPOINT = `${process.env.R2_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`}/${BUCKET}`;
 const TYPES: Record<string, string> = {

@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+
+// The repo is a workspace (cloud, desktop): packages are installed once at its root, so that is Turbopack's root too.
+const root = path.resolve(__dirname, "..");
+const dep = (p: string) => { try { return path.relative(__dirname, require.resolve(p)); } catch { return `../node_modules/${p}`; } };
 
 // Browser hardening on every response: HTTPS only (2 years), never framed by another site (clickjacking), no MIME
 // sniffing, no full URLs leaked to other sites, and only the features the studio uses (the microphone, for recording).
@@ -17,7 +22,8 @@ const config: NextConfig = {
   // The MCP SDK picks its schema checker by runtime: Ajv on Node (it writes code at run time, which Cloudflare Workers
   // forbid), @cfworker/json-schema on workerd. Use the Workers one everywhere, so the same build runs on both
   // (docs/MIGRATION.md step 3).
-  turbopack: { resolveAlias: { "@modelcontextprotocol/server/_shims": "./node_modules/@modelcontextprotocol/server/dist/shimsWorkerd.mjs" } },
+  turbopack: { root, resolveAlias: { "@modelcontextprotocol/server/_shims": `./${dep("@modelcontextprotocol/server/dist/shimsWorkerd.mjs")}` } },
+  outputFileTracingRoot: root,
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

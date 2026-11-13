@@ -14,6 +14,7 @@ const note = (req: Request, ok: boolean, who: string, how: string) => after(() =
 const NO_SEAT = "We couldn't create a seat for that email. Ask the owner to add it in Settings → Security, then try again.";
 
 export async function POST(req: Request) {
+  await (await import("@/lib/db")).ensureSchema().catch(() => null); // a brand-new studio: its tables first
   const { token, signup, email: loginEmail, password: loginPassword } = (await req.json().catch(() => ({}))) as { token?: string; email?: string; password?: string; signup?: { name?: string; email?: string; password?: string } };
   if ((process.env.MCP_TOKEN ?? "").length < 24) return Response.json({ error: "MCP_TOKEN is not set on the server (24+ characters)." }, { status: 500 });
 

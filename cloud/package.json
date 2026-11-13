@@ -5,8 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "schema": "node scripts/gen-schema.mjs",
+    "setup": "node scripts/deploy.mjs",
+    "build:worker": "opennextjs-cloudflare build"
   },
   "engines": {
     "node": ">=20"
@@ -39,5 +44,34 @@
     "@types/react-dom": "^19.3.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.156.0"
+  },
+  "cloudflare": {
+    "label": "Creavia Cloud",
+    "products": [
+      "Workers",
+      "R2"
+    ],
+    "categories": [
+      "storage"
+    ],
+    "icon_urls": [
+      "https://raw.githubusercontent.com/aspershupadhyay/creavia/main/brand/icon.svg"
+    ],
+    "preview_image_url": "https://raw.githubusercontent.com/aspershupadhyay/creavia/main/brand/icon-1024.png",
+    "publish": true,
+    "bindings": {
+      "BUCKET": {
+        "description": "Where the studio keeps files, voices and its own state."
+      },
+      "MCP_TOKEN": {
+        "description": "The studio's master key: 24+ random characters. Keep it: the desktop app's token sign-in and scripts use it."
+      },
+      "WORKER_SECRET": {
+        "description": "24+ random characters, shared with your GPU workers (Colab, Kaggle, Modal, or the Creavia app's engine)."
+      },
+      "DATABASE_URL": {
+        "description": "Your Neon Postgres connection string (postgres://\u2026). Free at neon.tech."
+      }
+    }
   }
 }

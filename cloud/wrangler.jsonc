@@ -1,12 +1,12 @@
-// The studio on Cloudflare Workers (docs/MIGRATION.md step 3). Built by `npx opennextjs-cloudflare build`, deployed by
-// `npx wrangler deploy` (.github/workflows/deploy.yml). Secrets live on the Worker (`npx wrangler secret put`), never here.
+// Creavia Cloud on Cloudflare Workers. Built by OpenNext (`npm run build:worker`), deployed by `npm run deploy` (Deploy to
+// Cloudflare, `npm run setup`, or .github/workflows/cloud.yml). Secrets live on the Worker, never here.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "creavia-cloud",
   "main": ".open-next/worker.js",
-  // your own Cloudflare account: one-click deploy, see docs/DEPLOY.md. Set APP_URL to the address it is served at
-  // address, so there's one URL for sign-in cookies and OAuth callbacks
-  "workers_dev": false,
+  // your own Cloudflare account (one click, or `npm run setup`: docs/DEPLOY.md); served at its workers.dev address
+  // until you add a custom domain (then set APP_URL to it)
+  "workers_dev": true,
   "preview_urls": false,
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],

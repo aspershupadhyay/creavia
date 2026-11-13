@@ -16,6 +16,7 @@ const bodyOf = async (req: Request) => ((await req.json().catch(() => ({}))) ?? 
 const fail = (e: unknown) => Response.json({ error: (e as Error).message }, { status: e instanceof DataError ? (e.status >= 500 ? 502 : e.status) : 500 });
 
 export async function GET(req: Request, ctx: Ctx) {
+  await (await import("@/lib/db")).ensureSchema().catch(() => null);
   if (!(await isAuthed(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   const [a, b] = (await ctx.params).path;
   try {
@@ -39,6 +40,7 @@ export async function GET(req: Request, ctx: Ctx) {
 }
 
 export async function POST(req: Request, ctx: Ctx) {
+  await (await import("@/lib/db")).ensureSchema().catch(() => null);
   if (!(await isAuthed(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   const [a, b] = (await ctx.params).path;
   try {

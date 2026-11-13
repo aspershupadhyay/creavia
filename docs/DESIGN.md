@@ -1,4 +1,18 @@
-# Creavia Studio design rules
+# Design
+
+**Creavia (2026-11-13):** everything below still holds, with the Creavia brand on top:
+
+- **Vee**, the mascot (`brand/`, `cloud/components/art.tsx` Logo, `desktop/src/shell/Vee.tsx`): a soft gumdrop with a
+  spark of an idea. Flat shapes only (the "3D" is a second, lighter shape, never a gradient). It blinks and its spark
+  twinkles; on the desktop it bobs, spins its spark while something works, and sleeps when the engine is off.
+- **Colours:** matte black and warm cream; **marigold `#FFB627`** (`--brand`) is the one accent, for the main action on
+  a screen and progress. No purple, indigo or blue-to-violet "AI" gradients. Category tints (peach, sky, mint, rose,
+  lavender, sand) only as soft tile backgrounds.
+- **Desktop pages** (`desktop/src/pages`, `styles/creavia.css`, classes `cr-*`) use the studio's tokens and components
+  (`PageHeader`, buttons, `.seg`); macOS draws its window buttons over the sidebar's top (`--mac-bar`).
+
+---
+
 
 The dashboard is a clean product UI in the family of ElevenLabs and Linear-style workspaces, dark only (the owner's
 call): a near-black sidebar and canvas, hairline borders, white primary buttons, soft tinted status pills, and nothing

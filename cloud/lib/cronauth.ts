@@ -10,7 +10,7 @@ import { safeEqual } from "./worker";
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 export const CRON_AUDIENCE = "voicebox-cron";
-const REPO = process.env.CRON_GITHUB_REPO || "aspershupadhyay/voicebox-gpu";
+const REPO = process.env.CRON_GITHUB_REPO || "aspershupadhyay/creavia";
 const WORKFLOW = `${REPO}/.github/workflows/sweep.yml@refs/heads/main`;
 export const workflowRef = (file: string) => `${REPO}/.github/workflows/${file}@refs/heads/main`;
 export const GITHUB_REPO = REPO;

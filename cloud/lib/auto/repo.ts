@@ -8,7 +8,7 @@ import { getControl } from "./control";
 
 const API = () => (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, "");
 /** The studio itself: models may open PRs here, but every merge waits for the owner. */
-export const PLATFORM = (process.env.PLATFORM_REPO || "aspershupadhyay/voicebox-gpu").toLowerCase();
+export const PLATFORM = (process.env.PLATFORM_REPO || "aspershupadhyay/creavia").toLowerCase();
 const NEVER = new Set(["main", "master", "production", "release"]);
 
 export class RepoError extends Error {}
