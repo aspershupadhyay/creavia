@@ -56,8 +56,10 @@ jobs:
           script: |
             const tag = process.env.TAG || context.ref.replace('refs/tags/', '');
             if (!/^v\d+\.\d+\.\d+/.test(tag)) throw new Error(`"${tag}" isn't a version like v0.2.0`);
-            const found = await github.rest.repos.getReleaseByTag({ ...context.repo, tag }).catch(() => null);
-            if (found) return found.data.id;
+            // a re-run reuses its release, the draft too (a draft has no tag yet, so look through the list)
+            const all = await github.paginate(github.rest.repos.listReleases, { ...context.repo, per_page: 100 });
+            const found = all.find((r) => r.tag_name === tag);
+            if (found) return found.id;
             const { data } = await github.rest.repos.createRelease({ ...context.repo, tag_name: tag, target_commitish: context.sha, name: `Creavia ${tag}`, draft: true,
               body: [
                 'Download the file for your computer:',
@@ -101,15 +103,26 @@ jobs:
         shell: bash
         env: { KEY: "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" }
         run: if [ -n "$KEY" ]; then echo "args=--config src-tauri/tauri.updater.conf.json" >> "$GITHUB_OUTPUT"; fi
+      # Apple signing only when the certificate is there: Tauri tries to import APPLE_CERTIFICATE whenever the variable
+      # exists, even empty, and fails. Without it, macOS builds are ad-hoc signed (tauri.conf.json signingIdentity "-").
+      - name: Apple signing, if set up
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PW: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          AID: ${{ secrets.APPLE_ID }}
+          APW: ${{ secrets.APPLE_PASSWORD }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$CERT" ]; then
+            { echo "APPLE_CERTIFICATE=$CERT"; echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PW"; echo "APPLE_SIGNING_IDENTITY=$IDENTITY"; } >> "$GITHUB_ENV"
+            if [ -n "$AID" ]; then { echo "APPLE_ID=$AID"; echo "APPLE_PASSWORD=$APW"; echo "APPLE_TEAM_ID=$TEAM"; } >> "$GITHUB_ENV"; fi
+          else echo "No Apple certificate: ad-hoc signed (right-click → Open the first time)"; fi
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
