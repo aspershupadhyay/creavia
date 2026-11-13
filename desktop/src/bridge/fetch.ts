@@ -18,6 +18,10 @@ export function routed(url: string): string | null {
   try {
     const u = new URL(url, location.href);
     if (u.origin === location.origin) return CLOUD_PATHS.test(u.pathname) ? u.pathname + u.search : null;
+    // the app's own channels stay in the web view: on Windows Tauri reaches Rust over http://ipc.localhost and serves
+    // cloud:// as http://cloud.localhost. Sending those through Rust would call Rust from Rust forever (it did:
+    // "Out of Memory" on Windows in 0.1.1).
+    if (u.hostname.endsWith(".localhost")) return null;
     if (u.protocol === "http:" || u.protocol === "https:") return u.href;
   } catch {}
   return null;

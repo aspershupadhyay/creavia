@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/focused-brahmagupta-khr8vt]
-    paths: [".github/workflows/winprobe.yml", "scripts/winprobe.mjs", "desktop/src-tauri/src/window.rs"]
+    paths: [".github/workflows/winprobe.yml", "scripts/winprobe.mjs", "desktop/src-tauri/src/window.rs", "desktop/src/bridge/**"]
 jobs:
   probe:
     runs-on: windows-latest

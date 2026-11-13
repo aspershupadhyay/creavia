@@ -28,9 +28,11 @@ async function watch(ctx, page, seconds) {
   page.on("console", (m) => log("console", m.type(), m.text().slice(0, 300)));
   page.on("pageerror", (e) => log("pageerror", (e.stack || e.message).slice(0, 800)));
   for (let t = 0; t < seconds / 3; t++) {
-    const { metrics } = await cdp.send("Performance.getMetrics");
+    const { metrics } = await cdp.send("Performance.getMetrics").catch(() => ({ metrics: null }));
+    if (!metrics) { log("FAIL: the page died while being watched"); process.exit(1); }
     const m = Object.fromEntries(metrics.map((x) => [x.name, x.value]));
     log(`heap=${(m.JSHeapUsedSize / 1e6).toFixed(1)}MB nodes=${m.Nodes} url=${page.url()}`);
+    if (m.JSHeapUsedSize > 300e6) { log("FAIL: the page is eating memory"); process.exit(1); }
     await sleep(3000);
   }
   return cdp;
@@ -38,6 +40,10 @@ async function watch(ctx, page, seconds) {
 
 const first = await attach("start");
 const cdp = await watch(first.ctx, first.page, 30);
+const shown = await first.page.evaluate(() => document.body.innerText.slice(0, 120));
+log("page shows:", JSON.stringify(shown));
+await first.page.screenshot({ path: `${out}/before.png` }).catch(() => {});
+if (!shown.trim()) { log("FAIL: the page is empty"); process.exit(1); }
 const gpu = await first.page.evaluate(() => { const c = document.createElement("canvas").getContext("webgl"); const d = c?.getExtension("WEBGL_debug_renderer_info"); return d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : "none"; });
 log("renderer before:", gpu);
 log("crashing the page on purpose");
