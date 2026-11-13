@@ -47,7 +47,8 @@ cloud in one click, models they choose. Decisions and what's left, in order. Tic
 
 ## Next, in order
 
-1. **Signing.** v0.1.0 is out unsigned (macOS ad-hoc: right-click → Open; Windows: More info → Run anyway). Add the
+1. **Signing** (not for now: the owner isn't buying developer accounts, 2026-11-13; README and the guide show the
+   one-time "trust it" steps). v0.1.0 is out unsigned (macOS ad-hoc: right-click → Open; Windows: More info → Run anyway). Add the
    updater key as the `TAURI_SIGNING_PRIVATE_KEY` secret so every later tag ships signed updates (the public half is in
    tauri.conf.json; lose the private half and installed apps can't update). Then an Apple Developer ID + notarisation
    (`APPLE_*` secrets) and a Windows code-signing certificate, to drop the first-launch warnings.

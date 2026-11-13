@@ -4,6 +4,12 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-13: README, no paid certificates
+
+- **No Apple or Microsoft developer accounts for now.** Say so in the README, and show calmly, per system, what to do
+  the first time (macOS: Open Anyway or the quarantine command; Windows: Run anyway; Linux: chmod, FUSE, apt/dnf).
+- **A real diagram, not ASCII art**, and a neat, calm, pretty README.
+
 ## 2026-11-13: Creavia, release 0.1
 
 - **Updates without reinstalling.** A new release reaches installed apps by itself: one click, it restarts.
