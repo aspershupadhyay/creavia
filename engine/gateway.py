@@ -3154,7 +3154,6 @@ class _Uploader:
 
     def add(self, path):
         path = os.path.abspath(path)
-        ext = os.path.splitext(path)[1].lower()
         with self.lock:
             ctype = _fetch_type(path)
             if path in self.seen or not ctype or not os.path.isfile(path) or len(self.futs) >= len(self.puts):

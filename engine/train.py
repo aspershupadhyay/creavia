@@ -342,7 +342,8 @@ def pick_by_listening(model, saved, held_rows, speak, decode, report, work):
     def emb(a):
         x = fe(to16(a), sampling_rate=16000, return_tensors="pt").to("cuda")
         with torch.inference_mode():
-            return torch.nn.functional.normalize(sv(**x).embeddings, dim=-1)[0]
+            # noqa below: pyflakes reads the `del sv` at the end of the outer function as making this name undefined
+            return torch.nn.functional.normalize(sv(**x).embeddings, dim=-1)[0]  # noqa: F821
 
     refs = []
     for r in lines:

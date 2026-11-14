@@ -36,8 +36,10 @@ export const withKeyHeader = (h: (req: Request) => Response | Promise<Response>)
   const res = await h(r);
   if (res.status !== 401) return res;
   // a refusal says what arrived (each key's prefix and length only, never the key), so a script can tell a wrong key
-  // from one a proxy never sent
-  const seen = (v: string | null | undefined) => (v ? `${v.slice(0, 5)}… (${v.length} chars)` : "none");
+  // from one a proxy never sent. Plain ASCII only: a header can't carry "…" or most non-ASCII, and setting one throws,
+  // which turned every refused key into a 500 (docs/LESSONS.md, 2026-11-14)
+  const printable = (s: string) => s.replace(/[^\x20-\x7e]/g, "?");
+  const seen = (v: string | null | undefined) => (v ? `${printable(v.slice(0, 5))}... (${v.length} chars)` : "none");
   const out = new Response(res.body, res);
   out.headers.set("x-voicebox-key-seen", seen(k));
   out.headers.set("x-voicebox-auth-seen", seen(r.headers.get("authorization")?.replace(/^bearer\s+/i, "").trim()));

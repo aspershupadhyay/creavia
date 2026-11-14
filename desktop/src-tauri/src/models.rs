@@ -222,9 +222,9 @@ pub async fn download(state: AppState, id: String, on_event: OnEvent) -> Result<
         if live.contains_key(&id) { return Err("already downloading".into()); }
         live.insert(id.clone(), stop.clone());
     }
-    let dir = engine_cache(&state, &m.engine);
+    let dir = engine_cache(state, &m.engine);
     let result: Result<(), String> = async {
-        let (jobs, refs) = plan(&state, &m, &dir).await?;
+        let (jobs, refs) = plan(state, &m, &dir).await?;
         let total: u64 = jobs.iter().map(|j| j.size).sum();
         let free = crate::sys::free_bytes(&dir);
         let have = dir_bytes(&dir);
@@ -253,7 +253,7 @@ pub async fn download(state: AppState, id: String, on_event: OnEvent) -> Result<
         };
         let st: AppState = state.clone();
         let (done_f, stop_f) = (done.clone(), stop.clone());
-        let results: Vec<Result<(), String>> = stream::iter(jobs.into_iter())
+        let results: Vec<Result<(), String>> = stream::iter(jobs)
             .map(move |j| { let (st, done, stop) = (st.clone(), done_f.clone(), stop_f.clone()); async move { fetch_one(&st, &j, &done, &stop).await } })
             .buffer_unordered(4).collect().await;
         stop.store(true, Ordering::Relaxed);

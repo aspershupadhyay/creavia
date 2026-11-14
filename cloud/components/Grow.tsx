@@ -149,6 +149,7 @@ function Status({ d }: { d: LiveView }) {
   );
 }
 
+// biome-ignore lint/suspicious/noRedeclare: the LiveView type (imported) and this component share a name, which TypeScript allows
 export function LiveView() {
   const { data: d, err } = useLive();
   const [sel, setSel] = useState<string | null>(null);

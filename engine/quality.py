@@ -10,7 +10,6 @@ analyze      - measures a recording: level, noise floor / SNR, effective bandwid
 cleanup_plan - picks the clean-up chain from those measurements instead of one fixed recipe.
 """
 import difflib
-import math
 import re
 
 from lexicon import speakable

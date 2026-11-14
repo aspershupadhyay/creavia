@@ -51,7 +51,7 @@ read and change without fear. CLAUDE.md sends every session here; a feature is n
 1. Read the whole diff as a stranger: is every name clear, every branch needed, every error handled?
 2. Run the review tools: `/code-review` on the diff, `/security-review` for anything touching sign-in, data, files,
    payments, MCP or agents, `/simplify` for clean-ups.
-3. Run everything: `npm run check`, `npm test`, the builds, the Rust self-check, the screens at full width and 390 px.
+3. Run everything: `npm run check`, `npm test`, `npm run test:engine`, `npm run lint`, the builds, the Rust self-check, the screens at full width and 390 px.
    Look at the real app, not just the tests.
 4. Fix what you find, then write in the PR what you checked and what you could not.
 

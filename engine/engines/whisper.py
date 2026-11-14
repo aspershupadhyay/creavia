@@ -2,7 +2,6 @@
 files chunked at 30 s and the windows batched as wide as the free GPU memory allows. WHISPER_MODEL=openai/whisper-large-v3
 brings back the full decoder (slower, marginally better on hard accents)."""
 import os
-import numpy as np
 import torch
 
 MODEL = os.environ.get("WHISPER_MODEL", "openai/whisper-large-v3-turbo")

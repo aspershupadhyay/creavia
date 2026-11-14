@@ -141,7 +141,7 @@ async fn call_local(state: &AppState, name: &str, args: Value) -> Value {
 async fn cloud_key(state: &AppState) -> Option<String> {
     if let Some(t) = state.store.secret("cloud_token") { return Some(t); }
     if let Some(k) = state.store.secret("cloud_mcp_key") { return Some(k); }
-    if state.store.secret("cloud_cookie").is_none() { return None; }
+    state.store.secret("cloud_cookie")?; // signed in with a cookie: make a key below; otherwise there is none
     let rb = net::cloud_request(state, reqwest::Method::POST, "/api/dash/automation/keys").ok()?;
     let v: Value = rb.json(&json!({ "name": "Creavia desktop" })).send().await.ok()?.json().await.ok()?;
     let k = v.get("key")?.as_str()?.to_string();
@@ -170,7 +170,7 @@ async fn cloud_rpc(state: &AppState, body: Value) -> Result<Value, String> {
         if code >= 400 { return Err(format!("the studio's MCP answered {code}")); }
         if ctype.contains("event-stream") {
             let last = raw.lines().filter_map(|l| l.strip_prefix("data:")).map(str::trim).filter(|l| !l.is_empty())
-                .filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|v| v.get("id").is_some()).last();
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok()).rfind(|v| v.get("id").is_some()); // the last message with an id is the answer
             return last.ok_or_else(|| "empty answer from the studio's MCP".into());
         }
         return serde_json::from_str(&raw).map_err(|e| e.to_string());

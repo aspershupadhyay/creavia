@@ -402,6 +402,7 @@ function CaptionTool({ room, postId, setPost }: ToolProps) {
   const [busy, setBusy] = useState(false);
   const last = useRef<SpaceId | null>(null);
   useEffect(() => { setBase(post?.caption ?? ""); setEdits({}); }, [post?.$id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // biome-ignore lint/suspicious/noShadowRestrictedNames: a local helper; it shadows no global that this component uses
   const valueOf = (s: SpaceId) => edits[s] ?? saved[s] ?? adaptCaption(base, s, { title: post?.title, tags });
   const over = ts.some((x) => valueOf(x.space).length > captionLimit(x.space));
   const save = async () => {

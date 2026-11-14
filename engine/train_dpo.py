@@ -78,7 +78,6 @@ def main():
     rng = random.Random(7)
     rng.shuffle(pairs)
     n_eval = max(4, len(pairs) // 10)
-    evals, train = pairs[:n_eval], pairs[n_eval:]
     data = [(seq(p["said"], p["chosen"]), seq(p["said"], p["rejected"]), float(p.get("weight") or 1)) for p in pairs]
 
     # the reference: this same adapter before any update

@@ -1,14 +1,22 @@
 # Phase 0: foundation
 
-**Status:** not started.
+**Status:** in progress: the quality foundation (first item) is partly done.
 **Goal:** everything the houses stand on: many workspaces safely in one service, the new Creavia look and frame, the
 tool registry, Home, and the slow outside approvals started.
 
 ## What ships
 
-- [ ] **Quality foundation (first):** test runners in every part (Vitest in desktop ✓ with the first test, Vitest in
-      cloud, `cargo test`, pytest in engine), a linter and formatter, the shared workspace-isolation suite, Playwright
-      for core flows, Sentry for errors; CI blocks merges on all of them (docs/ENGINEERING.md).
+- [ ] **Quality foundation (first):** test runners in every part, a linter and formatter, the shared
+      workspace-isolation suite, Playwright for core flows, Sentry for errors; CI blocks merges on all of them
+      (docs/ENGINEERING.md, [ADR 0001](../../adr/0001-quality-tooling.md)).
+  - [x] Test runners in every part: Vitest in desktop and cloud, `cargo test`, pytest in engine
+  - [x] Linters and formatters: Biome (TypeScript, CSS, JSON), ruff (engine), rustfmt and clippy (Rust)
+  - [x] One `Checks` workflow on every pull request, no path filter, so it can be required
+  - [x] Isolation suite, part 1: every route refuses a signed-out caller without touching storage
+        (`cloud/test/routes.test.ts`); it found and fixed the MCP's 500-on-a-wrong-key bug (docs/LESSONS.md)
+  - [ ] Owner: mark the three Checks jobs as required on `main` (Settings → Branches)
+  - [ ] Playwright for the core flows (with sign-up and invites, below)
+  - [ ] Sentry for errors (needs the owner's Sentry account and DSN; opt-in on the desktop)
 - [ ] **A Creavia cloud of its own, plus staging:** the `creavia-cloud` Worker, the `creavia` bucket, its own Neon
       project, and a staging copy with test accounts. Never the live VoiceBox (blocked in the app and by the Guard
       workflow).

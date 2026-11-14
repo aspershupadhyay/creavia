@@ -1,0 +1,24 @@
+// Biome: the linter and formatter for Creavia's TypeScript, TSX, CSS and JSON (docs/adr/0001-quality-tooling.md).
+// Run `npm run lint` to check and `npm run format` to fix. CI runs `biome ci`, which fails on any error.
+// New files get every recommended rule and must be formatted. Files written before Biome are listed in
+// biome.legacy.jsonc: a lower floor (correctness only) and no formatting, until each is rewritten.
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["./biome.legacy.jsonc"],
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "cloud/**",
+      "desktop/src/**",
+      "desktop/*.ts",
+      "!cloud/lib/bundle.ts",
+      "!cloud/lib/schema.ts",
+      "!cloud/lib/auto/playbook-docs.ts",
+      "!cloud/public/**"
+    ]
+  },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },
+  "javascript": { "formatter": { "quoteStyle": "double", "trailingCommas": "all", "semicolons": "always" } },
+  "linter": { "enabled": true, "rules": { "recommended": true } },
+  "assist": { "enabled": false }
+}
