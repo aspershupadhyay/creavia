@@ -246,7 +246,7 @@ html[data-platform="mac"] .app::before { content: ""; position: fixed; top: 0; l
 .cr-snippets .seg { margin-bottom: 14px; }
 .cr-snip-where { color: var(--mute); font-size: 12.5px; margin-bottom: 8px; }
 .cr-code { position: relative; }
-.cr-code pre { margin: 0; padding-right: 150px !important; background: var(--side); border: 1px solid var(--line2); border-radius: 12px; padding: 16px; font-size: 12.5px; line-height: 1.6; color: var(--ink); overflow: auto; white-space: pre; }
+.cr-code pre { margin: 0; background: var(--side); border: 1px solid var(--line2); border-radius: 12px; padding: 16px; padding-right: 150px !important; font-size: 12.5px; line-height: 1.6; color: var(--ink); overflow: auto; white-space: pre; }
 .cr-code button { position: absolute; top: 10px; right: 10px; }
 
 /* Deploy */

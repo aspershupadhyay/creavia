@@ -16,7 +16,10 @@ use axum::{
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::{collections::HashMap, time::{Duration, Instant}};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 use tauri::State;
 use tokio::sync::oneshot;
 
@@ -29,7 +32,14 @@ pub struct Mcp {
 }
 
 #[derive(Serialize)]
-pub struct McpStatus { running: bool, port: u16, url: String, token: String, tools: usize, hosted_url: Option<String> }
+pub struct McpStatus {
+    running: bool,
+    port: u16,
+    url: String,
+    token: String,
+    tools: usize,
+    hosted_url: Option<String>,
+}
 
 pub fn token(state: &AppState) -> String {
     state.store.secret("mcp_token").unwrap_or_else(|| {
@@ -40,9 +50,19 @@ pub fn token(state: &AppState) -> String {
 }
 
 fn status(state: &AppState) -> McpStatus {
-    let port = { let p = *state.mcp.port.lock(); if p == 0 { state.store.settings().mcp_port } else { p } };
+    let port = {
+        let p = *state.mcp.port.lock();
+        if p == 0 {
+            state.store.settings().mcp_port
+        } else {
+            p
+        }
+    };
     McpStatus {
-        running: state.mcp.stop.lock().is_some(), port, url: format!("http://127.0.0.1:{port}/mcp"), token: token(state),
+        running: state.mcp.stop.lock().is_some(),
+        port,
+        url: format!("http://127.0.0.1:{port}/mcp"),
+        token: token(state),
         tools: local_tools().len() + state.mcp.cloud_tools.lock().as_ref().map(|t| t.1.len()).unwrap_or(0),
         hosted_url: state.store.settings().cloud_url.map(|u| format!("{u}/api/mcp")),
     }
@@ -67,17 +87,36 @@ fn local_tools() -> Vec<Value> {
     ]
 }
 
-fn text(v: impl Into<String>) -> Value { json!({ "content": [{ "type": "text", "text": v.into() }] }) }
-fn fail(v: impl Into<String>) -> Value { json!({ "content": [{ "type": "text", "text": v.into() }], "isError": true }) }
+fn text(v: impl Into<String>) -> Value {
+    json!({ "content": [{ "type": "text", "text": v.into() }] })
+}
+fn fail(v: impl Into<String>) -> Value {
+    json!({ "content": [{ "type": "text", "text": v.into() }], "isError": true })
+}
 
-async fn engine_call(state: &AppState, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
-    let (base, key) = engine::endpoint(state).ok_or("The engine on this computer isn't running: start it in Creavia (This computer → Engine)")?;
-    let mut rb = state.net.client.request(method, format!("{base}{path}")).bearer_auth(key).timeout(Duration::from_secs(60));
-    if let Some(b) = body { rb = rb.json(&b); }
+async fn engine_call(
+    state: &AppState,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value, String> {
+    let (base, key) = engine::endpoint(state)
+        .ok_or("The engine on this computer isn't running: start it in Creavia (This computer → Engine)")?;
+    let mut rb =
+        state.net.client.request(method, format!("{base}{path}")).bearer_auth(key).timeout(Duration::from_secs(60));
+    if let Some(b) = body {
+        rb = rb.json(&b);
+    }
     let res = rb.send().await.map_err(|e| e.to_string())?;
     let code = res.status();
     let v: Value = res.json().await.unwrap_or(Value::Null);
-    if !code.is_success() { return Err(v.get("error").and_then(|e| e.as_str()).map(String::from).unwrap_or_else(|| format!("engine answered {code}"))); }
+    if !code.is_success() {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| format!("engine answered {code}")));
+    }
     Ok(v)
 }
 
@@ -139,9 +178,13 @@ async fn call_local(state: &AppState, name: &str, args: Value) -> Value {
 
 /// The key this app uses on the hosted MCP: the access token it signed in with, or a model key it made for itself.
 async fn cloud_key(state: &AppState) -> Option<String> {
-    if let Some(t) = state.store.secret("cloud_token") { return Some(t); }
-    if let Some(k) = state.store.secret("cloud_mcp_key") { return Some(k); }
-    if state.store.secret("cloud_cookie").is_none() { return None; }
+    if let Some(t) = state.store.secret("cloud_token") {
+        return Some(t);
+    }
+    if let Some(k) = state.store.secret("cloud_mcp_key") {
+        return Some(k);
+    }
+    state.store.secret("cloud_cookie")?; // signed in with a cookie: make a key below; otherwise there is none
     let rb = net::cloud_request(state, reqwest::Method::POST, "/api/dash/automation/keys").ok()?;
     let v: Value = rb.json(&json!({ "name": "Creavia desktop" })).send().await.ok()?.json().await.ok()?;
     let k = v.get("key")?.as_str()?.to_string();
@@ -154,23 +197,43 @@ async fn cloud_rpc(state: &AppState, body: Value) -> Result<Value, String> {
     let key = cloud_key(state).await.ok_or("not connected")?;
     for attempt in 0..2 {
         let session = state.mcp.cloud_session.lock().clone();
-        let mut rb = state.net.client.post(format!("{base}/api/mcp")).bearer_auth(&key)
-            .header("Accept", "application/json, text/event-stream").header("MCP-Protocol-Version", "2025-06-18").json(&body);
-        if let Some(s) = &session { rb = rb.header("Mcp-Session-Id", s); }
+        let mut rb = state
+            .net
+            .client
+            .post(format!("{base}/api/mcp"))
+            .bearer_auth(&key)
+            .header("Accept", "application/json, text/event-stream")
+            .header("MCP-Protocol-Version", "2025-06-18")
+            .json(&body);
+        if let Some(s) = &session {
+            rb = rb.header("Mcp-Session-Id", s);
+        }
         let res = rb.send().await.map_err(|e| e.to_string())?;
-        if let Some(s) = res.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()) { *state.mcp.cloud_session.lock() = Some(s.to_string()); }
+        if let Some(s) = res.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()) {
+            *state.mcp.cloud_session.lock() = Some(s.to_string());
+        }
         let code = res.status().as_u16();
         if code == 401 && state.store.secret("cloud_mcp_key").is_some() && attempt == 0 {
             state.store.set_secret("cloud_mcp_key", None); // revoked in the studio: make a new one once
             return Box::pin(cloud_rpc(state, body)).await;
         }
-        if (code == 400 || code == 404) && session.is_some() && attempt == 0 { *state.mcp.cloud_session.lock() = None; continue; }
+        if (code == 400 || code == 404) && session.is_some() && attempt == 0 {
+            *state.mcp.cloud_session.lock() = None;
+            continue;
+        }
         let ctype = res.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
         let raw = res.text().await.map_err(|e| e.to_string())?;
-        if code >= 400 { return Err(format!("the studio's MCP answered {code}")); }
+        if code >= 400 {
+            return Err(format!("the studio's MCP answered {code}"));
+        }
         if ctype.contains("event-stream") {
-            let last = raw.lines().filter_map(|l| l.strip_prefix("data:")).map(str::trim).filter(|l| !l.is_empty())
-                .filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|v| v.get("id").is_some()).last();
+            let last = raw
+                .lines()
+                .filter_map(|l| l.strip_prefix("data:"))
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                .rfind(|v| v.get("id").is_some()); // the last message with an id is the answer
             return last.ok_or_else(|| "empty answer from the studio's MCP".into());
         }
         return serde_json::from_str(&raw).map_err(|e| e.to_string());
@@ -179,7 +242,9 @@ async fn cloud_rpc(state: &AppState, body: Value) -> Result<Value, String> {
 }
 
 async fn ensure_cloud_session(state: &AppState) {
-    if state.mcp.cloud_session.lock().is_some() { return; }
+    if state.mcp.cloud_session.lock().is_some() {
+        return;
+    }
     let init = json!({ "jsonrpc": "2.0", "id": "creavia-init", "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "creavia-desktop", "version": env!("CARGO_PKG_VERSION") } } });
     if cloud_rpc(state, init).await.is_ok() {
         let _ = cloud_rpc_notify(state).await;
@@ -189,19 +254,36 @@ async fn ensure_cloud_session(state: &AppState) {
 async fn cloud_rpc_notify(state: &AppState) -> Result<(), String> {
     let base = state.store.settings().cloud_url.ok_or("not connected")?;
     let key = cloud_key(state).await.ok_or("not connected")?;
-    let mut rb = state.net.client.post(format!("{base}/api/mcp")).bearer_auth(key).header("Accept", "application/json, text/event-stream")
+    let mut rb = state
+        .net
+        .client
+        .post(format!("{base}/api/mcp"))
+        .bearer_auth(key)
+        .header("Accept", "application/json, text/event-stream")
         .json(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
-    if let Some(s) = state.mcp.cloud_session.lock().clone() { rb = rb.header("Mcp-Session-Id", s); }
+    if let Some(s) = state.mcp.cloud_session.lock().clone() {
+        rb = rb.header("Mcp-Session-Id", s);
+    }
     rb.send().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
 async fn cloud_tools(state: &AppState) -> Vec<Value> {
-    if let Some((at, t)) = state.mcp.cloud_tools.lock().as_ref() { if at.elapsed() < Duration::from_secs(300) { return t.clone(); } }
-    if net::connection(&state.store).url.is_none() { return vec![]; }
+    if let Some((at, t)) = state.mcp.cloud_tools.lock().as_ref() {
+        if at.elapsed() < Duration::from_secs(300) {
+            return t.clone();
+        }
+    }
+    if net::connection(&state.store).url.is_none() {
+        return vec![];
+    }
     ensure_cloud_session(state).await;
-    let tools = cloud_rpc(state, json!({ "jsonrpc": "2.0", "id": "creavia-tools", "method": "tools/list", "params": {} })).await.ok()
-        .and_then(|v| v.pointer("/result/tools").and_then(|t| t.as_array()).cloned()).unwrap_or_default();
+    let tools =
+        cloud_rpc(state, json!({ "jsonrpc": "2.0", "id": "creavia-tools", "method": "tools/list", "params": {} }))
+            .await
+            .ok()
+            .and_then(|v| v.pointer("/result/tools").and_then(|t| t.as_array()).cloned())
+            .unwrap_or_default();
     *state.mcp.cloud_tools.lock() = Some((Instant::now(), tools.clone()));
     tools
 }
@@ -231,8 +313,9 @@ async fn handle_one(state: &AppState, msg: Value) -> Option<Value> {
         "tools/call" => {
             let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            if name.starts_with("local_") { Ok(call_local(state, &name, args).await) }
-            else {
+            if name.starts_with("local_") {
+                Ok(call_local(state, &name, args).await)
+            } else {
                 ensure_cloud_session(state).await;
                 match cloud_rpc(state, json!({ "jsonrpc": "2.0", "id": id.clone(), "method": "tools/call", "params": { "name": name, "arguments": args } })).await {
                     Ok(v) => match (v.get("result"), v.get("error")) {
@@ -256,23 +339,50 @@ async fn handle_one(state: &AppState, msg: Value) -> Option<Value> {
 
 fn authorized(state: &AppState, headers: &HeaderMap, q: &HashMap<String, String>) -> bool {
     if let Some(o) = headers.get("origin").and_then(|v| v.to_str().ok()) {
-        let ok = url::Url::parse(o).ok().and_then(|u| u.host_str().map(|h| matches!(h, "localhost" | "127.0.0.1" | "[::1]"))).unwrap_or(false);
-        if !ok { return false; }
+        let ok = url::Url::parse(o)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| matches!(h, "localhost" | "127.0.0.1" | "[::1]")))
+            .unwrap_or(false);
+        if !ok {
+            return false;
+        }
     }
     let want = token(state);
-    let got = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ").or(v.strip_prefix("bearer ")))
-        .map(str::to_string).or_else(|| q.get("key").cloned()).unwrap_or_default();
+    let got = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer ").or(v.strip_prefix("bearer ")))
+        .map(str::to_string)
+        .or_else(|| q.get("key").cloned())
+        .unwrap_or_default();
     got.len() == want.len() && got.bytes().zip(want.bytes()).fold(0u8, |a, (x, y)| a | (x ^ y)) == 0
 }
 
-async fn rpc(AxState(state): AxState<AppState>, Query(q): Query<HashMap<String, String>>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+async fn rpc(
+    AxState(state): AxState<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
     if !authorized(&state, &headers, &q) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Creavia's MCP needs its token: copy the settings from the app (MCP page)" }))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Creavia's MCP needs its token: copy the settings from the app (MCP page)" })),
+        )
+            .into_response();
     }
     if let Some(batch) = body.as_array() {
         let mut out = vec![];
-        for m in batch.clone() { if let Some(r) = handle_one(&state, m).await { out.push(r); } }
-        return if out.is_empty() { StatusCode::ACCEPTED.into_response() } else { Json(Value::Array(out)).into_response() };
+        for m in batch.clone() {
+            if let Some(r) = handle_one(&state, m).await {
+                out.push(r);
+            }
+        }
+        return if out.is_empty() {
+            StatusCode::ACCEPTED.into_response()
+        } else {
+            Json(Value::Array(out)).into_response()
+        };
     }
     match handle_one(&state, body).await {
         Some(r) => Json(r).into_response(),
@@ -281,8 +391,11 @@ async fn rpc(AxState(state): AxState<AppState>, Query(q): Query<HashMap<String, 
 }
 
 pub async fn start(state: AppState, port: u16) -> Result<(), String> {
-    if state.mcp.stop.lock().is_some() { return Ok(()); }
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.map_err(|e| format!("Port {port} is busy: {e}"))?;
+    if state.mcp.stop.lock().is_some() {
+        return Ok(());
+    }
+    let listener =
+        tokio::net::TcpListener::bind(("127.0.0.1", port)).await.map_err(|e| format!("Port {port} is busy: {e}"))?;
     let (tx, rx) = oneshot::channel::<()>();
     let app = Router::new()
         .route("/mcp", post(rpc).get(|| async { (StatusCode::METHOD_NOT_ALLOWED, "POST JSON-RPC here") }))
@@ -292,28 +405,41 @@ pub async fn start(state: AppState, port: u16) -> Result<(), String> {
     *state.mcp.port.lock() = port;
     let st = state.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = axum::serve(listener, app).with_graceful_shutdown(async { let _ = rx.await; }).await;
+        let _ = axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = rx.await;
+            })
+            .await;
         *st.mcp.stop.lock() = None;
     });
     Ok(())
 }
 
 #[tauri::command]
-pub fn mcp_status(state: State<'_, AppState>) -> McpStatus { status(&state) }
+pub fn mcp_status(state: State<'_, AppState>) -> McpStatus {
+    status(&state)
+}
 
 #[tauri::command]
 pub async fn mcp_start(port: Option<u16>, state: State<'_, AppState>) -> Result<McpStatus, String> {
     let port = port.unwrap_or_else(|| state.store.settings().mcp_port);
     start(state.inner().clone(), port).await?;
-    state.store.update(|s| { s.mcp_port = port; s.mcp_autostart = true; });
+    state.store.update(|s| {
+        s.mcp_port = port;
+        s.mcp_autostart = true;
+    });
     let st = state.inner().clone();
-    tauri::async_runtime::spawn(async move { cloud_tools(&st).await; }); // warm the hosted tool list
+    tauri::async_runtime::spawn(async move {
+        cloud_tools(&st).await;
+    }); // warm the hosted tool list
     Ok(status(&state))
 }
 
 #[tauri::command]
 pub fn mcp_stop(state: State<'_, AppState>) -> McpStatus {
-    if let Some(tx) = state.mcp.stop.lock().take() { let _ = tx.send(()); }
+    if let Some(tx) = state.mcp.stop.lock().take() {
+        let _ = tx.send(());
+    }
     state.store.update(|s| s.mcp_autostart = false);
     status(&state)
 }

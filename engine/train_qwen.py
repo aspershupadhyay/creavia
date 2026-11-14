@@ -11,7 +11,7 @@ custom-voice checkpoint whose speaker is <name>. Writes <out>/qmodel.zip (config
 qwen engine rebuilds the rest from the base model), <out>/sample.wav (a line it never heard) and <out>/result.json.
 Needs a bf16 GPU (Ampere or newer: A100, L4, A10) and ~25 GB free: it trains every weight, not an adapter.
 """
-import glob, json, os, shutil, subprocess, sys, time, urllib.request, zipfile
+import json, os, shutil, subprocess, sys, time, urllib.request, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)

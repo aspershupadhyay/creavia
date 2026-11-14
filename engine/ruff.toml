@@ -1,0 +1,55 @@
+# The engine's linter and formatter (ruff), run in CI by .github/workflows/checks.yml. Run it from inside engine/
+# (`cd engine && ruff check . && ruff format --check .`): the file lists below are relative to this folder.
+# Lint: Pyflakes (unused or undefined names, shadowed imports) and syntax errors, everywhere. Format: every file not on
+# the [format] list below, so a mass reformat never hides a real change in a diff (docs/adr/0001-quality-tooling.md).
+line-length = 120
+target-version = "py310"
+# qwen_ft/ is the Qwen team's fine-tuning code (Apache-2.0), kept as they wrote it so upstream fixes still apply
+extend-exclude = ["qwen_ft"]
+
+[lint]
+select = ["F", "E9"]
+
+[format]
+# Files written before the formatter, kept in their hand layout until they are next rewritten: then take them off
+# this list in the same change. Everything else (new files, tests/) must be formatted: `ruff format engine`.
+exclude = [
+    "41 files would be reformatted, 1 file already formatted",
+    "bench.py",
+    "cleanup.py",
+    "config.py",
+    "dataset.py",
+    "engine_host.py",
+    "engines/_taehv.py",
+    "engines/_video.py",
+    "engines/animate.py",
+    "engines/apbwe.py",
+    "engines/chatterbox.py",
+    "engines/cosyvoice.py",
+    "engines/enhance.py",
+    "engines/kokoro.py",
+    "engines/ltx.py",
+    "engines/myvoice.py",
+    "engines/orpheus.py",
+    "engines/qwen.py",
+    "engines/qwenimage.py",
+    "engines/wan.py",
+    "engines/wan14.py",
+    "engines/whisper.py",
+    "engines/zimage.py",
+    "gateway.py",
+    "launcher.py",
+    "lexicon.py",
+    "media.py",
+    "notebook/build_notebook.py",
+    "quality.py",
+    "r2cache.py",
+    "resume.py",
+    "selfcheck.py",
+    "story.py",
+    "train.py",
+    "train_dpo.py",
+    "train_eagle.py",
+    "train_qwen.py",
+    "voicewalk.py",
+]

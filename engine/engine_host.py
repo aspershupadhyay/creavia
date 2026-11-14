@@ -94,7 +94,6 @@ def park(engine):
 
 
 def wake(engine):
-    import torch
     if hasattr(engine, "wake"):
         return engine.wake()
     llm = getattr(engine, "llm", None)

@@ -23,8 +23,12 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
   tests, Guard (secrets, VoiceBox separation), CodeQL and Dependabot (minor and patch only) are in place. `main` is the
   default branch and is protected: every change is a pull request that passes the required checks. The desktop app
   (0.1.2) ships with in-app updates; VoiceBox's UI still runs in `cloud/components` until the new screens replace it.
-- **Next:** Phase 0, first item: the quality foundation ([phases/phase-0-foundation.md](phases/phase-0-foundation.md)),
-  then Stage 1 to 3 for Phase 0 (strategy page, research plan, PRDs), then the Phase 0 build.
+- **Phase 0 started (2026-11-14):** the quality foundation's first part is in: tests in every part (Vitest in cloud
+  and desktop, `cargo test`, pytest), Biome, ruff, rustfmt and clippy, one `Checks` workflow on every pull request, and
+  a sweep that calls every cloud route signed out ([ADR 0001](../adr/0001-quality-tooling.md)).
+- **Next:** the rest of the quality foundation (Playwright, Sentry; see
+  [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
+  research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.
 
 ## Rules that come from this plan

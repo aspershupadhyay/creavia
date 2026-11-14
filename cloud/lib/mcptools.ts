@@ -1318,6 +1318,7 @@ export function registerTools(server: ToolServer, who: Actor = { name: "Claude (
       const r = await inbox.startUpload({ name, size, folder, post_id, carousel, position });
       const to = r.put_url ?? r.upload_url;
       return { put_url: r.put_url, upload_url: r.upload_url, ticket: r.ticket, expires_at: r.expires_at, content_type: r.content_type,
+        // biome-ignore lint/suspicious/noThenProperty: `then` is a string the tool's callers read (not a thenable); renaming it would break them
         run: `curl -sS -T '<path to ${name}>' -H 'Content-Type: ${r.content_type}' '${to}'`, then: "call save_file again with { ticket }; the answer has bytes (and sha256 after a put_url upload) to check against your file" };
     }),
   );

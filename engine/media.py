@@ -340,7 +340,7 @@ def plan_edit(spec, infos, nvenc, font_file):
     # sound: the clips' own (original_volume_db), a voiceover on top, music ducked under the speech
     ov = spec.get("original_volume_db")
     fg.append(f"[acat]volume={'0' if ov == 'mute' else f'{num(ov, -60, 12, 0):.1f}dB'}[orig]")
-    speech, mix = ["[orig]"], []
+    speech = ["[orig]"]
     if spec.get("voice"):
         v = spec["voice"]
         delay = int(num(v.get("at"), 0, 3600, 0) * 1000)

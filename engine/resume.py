@@ -34,7 +34,7 @@ class Resume:
             with zipfile.ZipFile(z) as zf:
                 meta = json.loads(zf.read("resume.json"))
                 if meta.get("key") != self.key:
-                    print(f"[resume] saved checkpoint is for a different dataset or settings; starting fresh", flush=True)
+                    print("[resume] saved checkpoint is for a different dataset or settings; starting fresh", flush=True)
                     return None
                 os.makedirs(dest, exist_ok=True)
                 zf.extractall(dest)

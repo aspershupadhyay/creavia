@@ -12,14 +12,21 @@ use tauri::{App, WebviewWindowBuilder};
 use std::{fs, path::PathBuf};
 
 #[cfg(windows)]
-fn flag() -> PathBuf { crate::store::data_dir().join("safe-graphics") }
+fn flag() -> PathBuf {
+    crate::store::data_dir().join("safe-graphics")
+}
 
 /// Is safe graphics on for this computer?
 #[cfg(windows)]
 fn safe_graphics() -> bool {
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--gpu") { let _ = fs::remove_file(flag()); return false; }
-    if args.iter().any(|a| a == "--safe-graphics") { let _ = fs::write(flag(), "on"); }
+    if args.iter().any(|a| a == "--gpu") {
+        let _ = fs::remove_file(flag());
+        return false;
+    }
+    if args.iter().any(|a| a == "--safe-graphics") {
+        let _ = fs::write(flag(), "on");
+    }
     std::env::var_os("CREAVIA_SAFE_GRAPHICS").is_some() || flag().exists()
 }
 
@@ -29,8 +36,12 @@ fn clear_graphics_caches(app: &App) {
     use tauri::Manager;
     let Ok(local) = app.path().app_local_data_dir() else { return };
     let web = local.join("EBWebView");
-    for d in ["GrShaderCache", "ShaderCache", "GraphiteDawnCache", "GPUPersistentCache"] { let _ = fs::remove_dir_all(web.join(d)); }
-    for d in ["GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "Code Cache"] { let _ = fs::remove_dir_all(web.join("Default").join(d)); }
+    for d in ["GrShaderCache", "ShaderCache", "GraphiteDawnCache", "GPUPersistentCache"] {
+        let _ = fs::remove_dir_all(web.join(d));
+    }
+    for d in ["GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "Code Cache"] {
+        let _ = fs::remove_dir_all(web.join("Default").join(d));
+    }
 }
 
 pub fn create_main(app: &App) -> tauri::Result<()> {
@@ -88,14 +99,18 @@ fn heal_crashes(window: &tauri::WebviewWindow, safe: bool) {
             let page_died = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
                 || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
                 || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED;
-            if !page_died { return Ok(()); }
+            if !page_died {
+                return Ok(());
+            }
             log::warn!("web view process failed ({}), safe graphics: {safe}", kind.0);
             if !safe {
                 let _ = fs::write(flag(), "fresh");
                 app.restart();
             }
             if reloads.fetch_add(1, Ordering::SeqCst) < 3 {
-                if let Some(w) = app.get_webview_window("main") { let _ = w.reload(); }
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.reload();
+                }
             }
             Ok(())
         }));

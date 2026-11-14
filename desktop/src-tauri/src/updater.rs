@@ -6,17 +6,31 @@ use tauri::{ipc::Channel, AppHandle};
 use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Serialize)]
-pub struct Available { version: String, current: String, notes: Option<String>, date: Option<String> }
+pub struct Available {
+    version: String,
+    current: String,
+    notes: Option<String>,
+    date: Option<String>,
+}
 
 #[derive(Serialize, Clone)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum Progress { Started { total: Option<u64> }, Chunk { done: u64 }, Installing }
+pub enum Progress {
+    Started { total: Option<u64> },
+    Chunk { done: u64 },
+    Installing,
+}
 
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> Result<Option<Available>, String> {
     let up = app.updater().map_err(|e| e.to_string())?;
     let found = up.check().await.map_err(|e| e.to_string())?;
-    Ok(found.map(|u| Available { version: u.version.clone(), current: u.current_version.clone(), notes: u.body.clone(), date: u.date.map(|d| d.to_string()) }))
+    Ok(found.map(|u| Available {
+        version: u.version.clone(),
+        current: u.current_version.clone(),
+        notes: u.body.clone(),
+        date: u.date.map(|d| d.to_string()),
+    }))
 }
 
 #[tauri::command]
@@ -27,14 +41,23 @@ pub async fn update_install(app: AppHandle, on_event: Channel<Progress>) -> Resu
     let mut started = false;
     u.download_and_install(
         |n, total| {
-            if !started { started = true; let _ = on_event.send(Progress::Started { total }); }
+            if !started {
+                started = true;
+                let _ = on_event.send(Progress::Started { total });
+            }
             done += n as u64;
             let _ = on_event.send(Progress::Chunk { done });
         },
-        || { let _ = on_event.send(Progress::Installing); },
-    ).await.map_err(|e| e.to_string())?;
+        || {
+            let _ = on_event.send(Progress::Installing);
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     app.restart();
 }
 
 #[tauri::command]
-pub fn app_version(app: AppHandle) -> String { app.package_info().version.to_string() }
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}

@@ -302,6 +302,7 @@ export default function Images() {
             </div>
             <div className="bar2" onClick={(e) => e.stopPropagation()}>
               <a className="btn sm" href={dl(open.item, open.i)}><DownloadSimple size={14} weight="bold" />PNG · {im.width}×{im.height}</a>
+              {/* biome-ignore lint/correctness/useHookAtTopLevel: useAsRef is a plain function, not a React hook */}
               <button className="ghost sm" onClick={() => useAsRef(open.item, open.i)}><Plus size={14} />Use as reference</button>
               <button className="ghost sm" onClick={() => reuse(open.item)}><ArrowsClockwise size={14} />Reuse prompt</button>
               <button className="ghost sm" onClick={() => setOpen(null)}><X size={14} />Close</button>

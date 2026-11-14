@@ -28,6 +28,7 @@ export default function Connect() {
     if (!inTauri()) { setErr("Open the Creavia app to connect."); return; }
     setBusy(true);
     try {
+      // biome-ignore lint/correctness/useHookAtTopLevel: useToken signs in with a token; it is not a React hook
       if (tab === "token") await useToken(url, token);
       else await signIn(url, email, password, tab === "signup" ? name : undefined);
       await refresh();

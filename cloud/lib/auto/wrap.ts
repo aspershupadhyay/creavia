@@ -153,6 +153,7 @@ export async function preflight(tool: string, args: Args, model: string, roleNam
     const h = callHash(tool, args);
     const id = typeof args.approval_id === "string" ? args.approval_id : "";
     if (id) {
+      // biome-ignore lint/correctness/useHookAtTopLevel: useApproval spends an approval; it is not a React hook
       const why = await useApproval(id, gate, h);
       if (why) return stop(`APPROVAL NOT USABLE (${id}): ${why}. ${why.includes("hasn't decided") ? `Call approvals action=wait id=${id}.` : "Call this tool again without approval_id to ask afresh."}`);
       return null;

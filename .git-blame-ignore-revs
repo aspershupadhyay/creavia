@@ -1,0 +1,5 @@
+# Commits that only reformat code. git blame skips them on GitHub; locally run:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# rustfmt over desktop/src-tauri (docs/adr/0001-quality-tooling.md)
+af06b14b0be8fca01c6ab6939b5e61ed0cfd607a

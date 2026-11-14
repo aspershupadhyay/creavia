@@ -28,6 +28,7 @@ const boot = `if("serviceWorker"in navigator&&location.protocol==="https:")addEv
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: `boot` is a constant written above, never user input */}
       <head><script dangerouslySetInnerHTML={{ __html: boot }} /></head>
       <body>{children}</body>
     </html>
