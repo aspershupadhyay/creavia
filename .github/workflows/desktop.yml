@@ -122,7 +122,7 @@ jobs:
             { echo "APPLE_CERTIFICATE=$CERT"; echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PW"; echo "APPLE_SIGNING_IDENTITY=$IDENTITY"; } >> "$GITHUB_ENV"
             if [ -n "$AID" ]; then { echo "APPLE_ID=$AID"; echo "APPLE_PASSWORD=$APW"; echo "APPLE_TEAM_ID=$TEAM"; } >> "$GITHUB_ENV"; fi
           else echo "No Apple certificate: ad-hoc signed (right-click → Open the first time)"; fi
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
