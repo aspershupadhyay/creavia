@@ -2,13 +2,19 @@
   "name": "creavia",
   "private": true,
   "description": "Creavia: create, publish and grow, on your computer or your own cloud.",
-  "workspaces": ["cloud", "desktop"],
+  "workspaces": [
+    "cloud",
+    "desktop"
+  ],
   "scripts": {
     "desktop": "npm run tauri -w desktop -- dev",
     "desktop:build": "npm run tauri -w desktop -- build",
     "cloud:dev": "npm run dev -w cloud",
     "cloud:deploy": "node cloud/scripts/deploy.mjs",
-    "check": "npm run typecheck -w cloud && npm run typecheck -w desktop"
+    "check": "npm run typecheck -w cloud && npm run typecheck -w desktop",
+    "test": "npm test -w desktop"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

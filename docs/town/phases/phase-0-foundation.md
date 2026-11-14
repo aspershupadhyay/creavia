@@ -6,6 +6,9 @@ tool registry, Home, and the slow outside approvals started.
 
 ## What ships
 
+- [ ] **Quality foundation (first):** test runners in every part (Vitest in desktop ✓ with the first test, Vitest in
+      cloud, `cargo test`, pytest in engine), a linter and formatter, the shared workspace-isolation suite, Playwright
+      for core flows, Sentry for errors; CI blocks merges on all of them (docs/ENGINEERING.md).
 - [ ] **Workspaces:** a `workspace_id` on every row (posts, comments, files, voices, connections, settings, jobs) and
       every R2/B2 key prefix; one place that sets it per request; Postgres row-level security as a second lock.
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.

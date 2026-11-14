@@ -9,6 +9,8 @@
 - Two-week cycles, each ending in something running in staging.
 - Claude writes and reviews code under CLAUDE.md; a person approves what ships.
 
+The full standard, with the definition of done, is [docs/ENGINEERING.md](../../ENGINEERING.md).
+
 ## Definition of done
 
 - [ ] Meets its PRD's acceptance criteria

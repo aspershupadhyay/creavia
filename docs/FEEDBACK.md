@@ -4,6 +4,13 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-14: build every feature to an elite standard
+
+- **Robust and elite, every feature:** bring suggestions and creativity, audit your own work and learn from it, debug
+  properly, unit tests for each feature, and every precaution against bugs. Human-readable code and project, best
+  practices throughout. Saved as `docs/ENGINEERING.md` (the standard), `docs/LESSONS.md` (bugs we learned from) and the
+  PR template, and CLAUDE.md / AGENTS.md point every session to them.
+
 ## 2026-11-14: a new UI, a company of agents, any AI key
 
 - **Not a single piece of VoiceBox's UI.** Every screen of Creavia is designed from scratch: modern, perfectly

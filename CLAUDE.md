@@ -13,7 +13,11 @@ It grew out of aspershupadhyay/voicebox-gpu; read docs/PLAN.md for the decisions
    a change to one goes into the other in the same session.
 2. **Find where we are:** `docs/town/README.md` → "Where we are", then the phase file it points to; continue the first
    unticked item, and tick items (and update "Where we are") as they land.
-3. **Repositories:** all Creavia work happens in **this repo** (aspershupadhyay/creavia). The live VoiceBox is
+3. **How we build (every feature, every session): `docs/ENGINEERING.md`.** Spec and pre-mortem first; readable code;
+   unit, integration and isolation tests (a bug fix starts with a failing test); audit your own diff with the review
+   tools; reproduce before fixing; log every escaped bug in `docs/LESSONS.md` and read it before touching that area.
+   Suggest better ways to the owner instead of only doing what was asked.
+4. **Repositories:** all Creavia work happens in **this repo** (aspershupadhyay/creavia). The live VoiceBox is
    aspershupadhyay/voicebox-gpu: read it only as a reference (to port a feature, or to check an API the app calls),
    and never change it from Creavia work. A session that ports features needs both repos attached.
 
@@ -40,7 +44,7 @@ It grew out of aspershupadhyay/voicebox-gpu; read docs/PLAN.md for the decisions
 
 ## Checks before pushing
 
-- `npm run check` (typecheck cloud and desktop) and `npm run build -w desktop`
+- `npm run check` (typecheck cloud and desktop), `npm test` (unit tests) and `npm run build -w desktop`
 - `cd desktop/src-tauri && cargo build && ./target/debug/creavia --self-check` (add `=full` to download Kokoro, run the
   engine and voice a line); build with `CARGO_BUILD_JOBS=4` on small machines
 - `npm run build:worker -w cloud` (OpenNext) for anything runtime-sensitive: Workers forbid code generated at run time and
