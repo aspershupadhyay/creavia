@@ -59,8 +59,12 @@ pub struct Store {
     secrets: Mutex<BTreeMap<String, String>>, // the Linux file store (and a cache elsewhere)
 }
 
-fn settings_path() -> PathBuf { data_dir().join("settings.json") }
-fn secrets_path() -> PathBuf { data_dir().join(".secrets.json") }
+fn settings_path() -> PathBuf {
+    data_dir().join("settings.json")
+}
+fn secrets_path() -> PathBuf {
+    data_dir().join(".secrets.json")
+}
 
 impl Store {
     pub fn load() -> Self {
@@ -69,7 +73,9 @@ impl Store {
         Self { settings: Mutex::new(settings), secrets: Mutex::new(secrets) }
     }
 
-    pub fn settings(&self) -> Settings { self.settings.lock().clone() }
+    pub fn settings(&self) -> Settings {
+        self.settings.lock().clone()
+    }
 
     pub fn update(&self, f: impl FnOnce(&mut Settings)) -> Settings {
         let mut s = self.settings.lock();
@@ -85,7 +91,9 @@ impl Store {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Ok(e) = keyring::Entry::new("studio.creavia.app", name) {
-                if let Ok(v) = e.get_password() { return Some(v); }
+                if let Ok(v) = e.get_password() {
+                    return Some(v);
+                }
             }
         }
         self.secrets.lock().get(name).cloned()
@@ -95,17 +103,32 @@ impl Store {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Ok(e) = keyring::Entry::new("studio.creavia.app", name) {
-                let ok = match value { Some(v) => e.set_password(v).is_ok(), None => { let _ = e.delete_credential(); true } };
+                let ok = match value {
+                    Some(v) => e.set_password(v).is_ok(),
+                    None => {
+                        let _ = e.delete_credential();
+                        true
+                    }
+                };
                 if ok {
                     // keep nothing on disk once the keychain holds it
                     let mut m = self.secrets.lock();
-                    if m.remove(name).is_some() { write_secrets(&m); }
+                    if m.remove(name).is_some() {
+                        write_secrets(&m);
+                    }
                     return;
                 }
             }
         }
         let mut m = self.secrets.lock();
-        match value { Some(v) => { m.insert(name.into(), v.into()); } None => { m.remove(name); } }
+        match value {
+            Some(v) => {
+                m.insert(name.into(), v.into());
+            }
+            None => {
+                m.remove(name);
+            }
+        }
         write_secrets(&m);
     }
 }
