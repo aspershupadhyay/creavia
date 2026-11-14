@@ -47,6 +47,10 @@ cloud in one click, models they choose. Decisions and what's left, in order. Tic
 
 ## Next, in order
 
+The product plan now lives in `docs/town/` (the creator town, the crew of agents, phases and stages); the list
+below is the engineering backlog that feeds it.
+
+
 1. **Signing** (not for now: the owner isn't buying developer accounts, 2026-11-13; README and the guide show the
    one-time "trust it" steps). v0.1.0 is out unsigned (macOS ad-hoc: right-click → Open; Windows: More info → Run anyway). Add the
    updater key as the `TAURI_SIGNING_PRIVATE_KEY` secret so every later tag ships signed updates (the public half is in

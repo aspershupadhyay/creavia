@@ -4,6 +4,19 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-14: the creator town
+
+- **Creavia is a creator town:** one app that replaces most of a creator's tools (voice, design, calendar, DMs like
+  ManyChat, analytics, deals, invoices, link in bio), with a free option. Plan it like a product company (specs, UX
+  with no AI slop, tech stack, every stage to production), not biased by VoiceBox's current UI.
+- **Plain names like the Claude app** (Home, Ask Vee, Ideas, Create, Calendar, Inbox, Analytics, Money, Files,
+  Settings).
+- **Connectors like Claude's marketplace**, and every tool open to any AI (Claude, ChatGPT, Gemini, Antigravity, BYOK).
+- **Each house has its own agent with a cool name and a character** (Juno, Bolt, Tempo, Echo, Lens, Penny, Atlas, led
+  by Vee), robust at its job; character art drafted with Nano Banana Pro.
+- **The plan lives in the repo** (`docs/town/`, a file per phase and stage) and CLAUDE.md / AGENTS.md point to it, so
+  any new session picks it up.
+
 ## 2026-11-14: Windows didn't open (0.1.2)
 
 - **"In Windows the app didn't even open"** ("This page is having a problem · Out of Memory"). The bridge sent Tauri's

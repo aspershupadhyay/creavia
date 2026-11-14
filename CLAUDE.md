@@ -4,6 +4,19 @@ Creavia: a creator studio. `desktop/` (Tauri 2 + Rust + the studio's React scree
 Workers via OpenNext: the hosted studio, its API and MCP), `engine/` (the Python GPU worker), `brand/`, `docs/`.
 It grew out of aspershupadhyay/voicebox-gpu; read docs/PLAN.md for the decisions and what's next.
 
+## Start here (every session)
+
+1. **The product plan is `docs/town/`** (start with `docs/town/README.md`): the creator town, its houses and features,
+   Vee and the crew of agents (`agents.md`), connectors and AI access, the roadmap phases (`phases/`) and the 12 build
+   stages (`stages/`). The same plan with drawings is the doc
+   https://claude.ai/artifact/JuzgR5Jggu2bBVZX1amo4p (read it with the docs tools, never a web fetch). Keep both in step:
+   a change to one goes into the other in the same session.
+2. **Find where we are:** `docs/town/README.md` → "Where we are", then the phase file it points to; continue the first
+   unticked item, and tick items (and update "Where we are") as they land.
+3. **Repositories:** all Creavia work happens in **this repo** (aspershupadhyay/creavia). The live VoiceBox is
+   aspershupadhyay/voicebox-gpu: read it only as a reference (to port a feature, or to check an API the app calls),
+   and never change it from Creavia work. A session that ports features needs both repos attached.
+
 ## Read first
 
 - `docs/FEEDBACK.md`: the owner's feedback, newest first; it wins over older rules. Add new feedback there in the same
