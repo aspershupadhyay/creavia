@@ -83,7 +83,7 @@ jobs:
           Write-Host "self-check passed"
           "exe=$($exe.FullName)" >> $env:GITHUB_OUTPUT
         id: installed
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       - name: The window opens, shows Creavia, stays small, and heals a crash
         shell: pwsh
