@@ -8,7 +8,7 @@ on the release candidate and no high-severity issue is open.
 | --- | --- | --- |
 | Unit and integration tests | Each piece and route does what its story says | Partial: Vitest (cloud, desktop), `cargo test`, pytest (engine), in `checks.yml` |
 | Lint and format | One style; likely bugs caught before review | In place: Biome, ruff, rustfmt, clippy ([ADR 0001](../../adr/0001-quality-tooling.md)) |
-| End-to-end (Playwright) | The ten core flows work in a browser | To add |
+| End-to-end (Playwright) | The ten core flows work in a browser | Started: sign-in and first run, cloud and desktop, 1280 and 390 px ([ADR 0002](../../adr/0002-end-to-end-tests.md)) |
 | App open tests, Windows/macOS/Linux | The installed app opens, shows Creavia, stays small | In place (`.github/workflows/install.yml`) |
 | Workspace isolation | No route, tool or link shows another workspace's data | Started: every route refuses a signed-out caller (`cloud/test/routes.test.ts`); other workspaces' ids come with workspaces (Phase 0) |
 | Agent evaluations | Saved tasks per agent: correct, on-brand, never beyond the dial | To add |

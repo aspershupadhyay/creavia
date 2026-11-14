@@ -15,8 +15,11 @@ tool registry, Home, and the slow outside approvals started.
   - [x] Isolation suite, part 1: every route refuses a signed-out caller without touching storage
         (`cloud/test/routes.test.ts`); it found and fixed the MCP's 500-on-a-wrong-key bug (docs/LESSONS.md)
   - [ ] Owner: mark the three Checks jobs as required on `main` (Settings → Branches)
-  - [ ] Playwright for the core flows (with sign-up and invites, below)
-  - [ ] Sentry for errors (needs the owner's Sentry account and DSN; opt-in on the desktop)
+  - [x] Playwright: sign-in and first-run flows in the cloud and the desktop, at full width and 390 px
+        (`e2e/`, [ADR 0002](../../adr/0002-end-to-end-tests.md))
+  - [ ] Playwright past sign-in, then sign-up and invites (needs the staging cloud, below)
+  - [ ] Sentry for errors (opt-in on the desktop). The owner's Sentry account is ready; its setup code must be made
+        with "Use IP pinning" off, since setup runs in the cloud, not on the owner's network
 - [ ] **A Creavia cloud of its own, plus staging:** the `creavia-cloud` Worker, the `creavia` bucket, its own Neon
       project, and a staging copy with test accounts. Never the live VoiceBox (blocked in the app and by the Guard
       workflow).

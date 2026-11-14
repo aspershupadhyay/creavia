@@ -52,7 +52,8 @@ own cloud (`creavia-cloud`, the `creavia` bucket, its own database) and a stagin
 ## Checks before pushing
 
 - `npm run check` (typecheck cloud and desktop), `npm test` (unit tests: desktop, cloud with the signed-out sweep of
-  every route, Rust), `npm run test:engine` (pytest), `npm run lint` (Biome, ruff, rustfmt, clippy; `npm run format`
+  every route, Rust), `npm run test:engine` (pytest), `npm run e2e` (Playwright: builds, then the flows at full width
+  and 390 px), `npm run lint` (Biome, ruff, rustfmt, clippy; `npm run format`
   fixes formatting) and `npm run build -w desktop`. A new cloud route goes in `cloud/test/route-guards.ts`
   (docs/adr/0001-quality-tooling.md)
 - `cd desktop/src-tauri && cargo build && ./target/debug/creavia --self-check` (add `=full` to download Kokoro, run the
