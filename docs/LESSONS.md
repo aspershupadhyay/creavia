@@ -3,6 +3,21 @@
 Every bug that reached `main` or a release: what happened, why, what now catches it, and the rule that changed.
 Newest first. Read the entries for an area before working in it (docs/ENGINEERING.md, step 7).
 
+## 2026-11-14 · install.sh failed at random: "No .deb in release"
+
+- **What:** some Install runs said the release had no .deb or Mac file. **Why:** GitHub sometimes returns the release
+  JSON on one line; the `sed` pattern then matched only the last download link. Real users would have hit it too.
+- **Now caught by:** the Install workflow; the fix splits every field onto its own line first (tested on both shapes).
+- **Rule:** never parse JSON line by line without making the lines first, and test a parser on both a pretty and a
+  compact reply.
+
+## 2026-11-14 · Desktop: a studio address typed as "HTTPS://…" became "https://https"
+
+- **What:** `normalize_url` checked for `https://` in lower case only, so a capitalised scheme got a second one added
+  and the host became `https`. Found by the new tests for the live-VoiceBox block, before any user hit it.
+- **Now caught by:** `net::tests::the_scheme_is_read_in_any_case` (`cargo test --lib`, run in CI).
+- **Rule:** URL handling is tested with odd spellings (case, trailing dots and slashes, ports, subdomains).
+
 ## 2026-11-14 · Windows: the app crashed on open with "Out of Memory" (0.1.1)
 
 - **What:** on Windows the page used over 3 GB within seconds and WebView2 killed it.

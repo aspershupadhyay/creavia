@@ -37,9 +37,10 @@ jobs:
       - run: npm run typecheck -w desktop
       - run: npm test -w desktop
       - run: npm run build -w desktop
-      - name: Rust build and self-check (settings, catalogue, the local MCP)
+      - name: Rust tests, build and self-check (settings, catalogue, the local MCP)
         working-directory: desktop/src-tauri
         run: |
+          cargo test --lib
           cargo build
           CREAVIA_HOME=$RUNNER_TEMP/creavia ./target/debug/creavia --self-check
 

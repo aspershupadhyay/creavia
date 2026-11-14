@@ -11,6 +11,7 @@ on:
   workflow_run:
     workflows: [Desktop]
     types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 jobs:

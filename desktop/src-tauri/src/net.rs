@@ -50,8 +50,23 @@ impl Net {
 #[derive(Serialize, Clone)]
 pub struct Connection { pub mode: &'static str, pub url: Option<String>, pub how: Option<String>, pub who: Option<String> }
 
+/// Studios Creavia must never connect to. The live VoiceBox (aspershupadhyay/voicebox-gpu) is the owner's working
+/// studio: Creavia is built and tested apart from it, so nothing done here can write to it or break it (docs/FEEDBACK.md,
+/// 2026-11-14). Matched on the host, including subdomains.
+const PROTECTED_HOSTS: &[&str] = &["voiceboxstudio.pages.dev"];
+
+pub fn is_protected(url: &str) -> bool {
+    let Ok(u) = url::Url::parse(url) else { return false };
+    let Some(host) = u.host_str().map(|h| h.trim_end_matches('.').to_ascii_lowercase()) else { return false };
+    PROTECTED_HOSTS.iter().any(|p| host == *p || host.ends_with(&format!(".{p}")))
+}
+
+const PROTECTED_MESSAGE: &str = "That's the live VoiceBox studio. Creavia keeps away from it so it can't break; use a Creavia Cloud instead.";
+
 pub fn connection(store: &Store) -> Connection {
     let s = store.settings();
+    // an older connection to a protected studio counts as no connection
+    if s.cloud_url.as_deref().is_some_and(is_protected) { return Connection { mode: "none", url: None, how: None, who: None }; }
     let connected = s.cloud_url.is_some() && (store.secret("cloud_cookie").is_some() || store.secret("cloud_token").is_some());
     Connection { mode: if connected { "cloud" } else { "none" }, url: s.cloud_url, how: s.cloud_how, who: s.cloud_who }
 }
@@ -59,10 +74,13 @@ pub fn connection(store: &Store) -> Connection {
 /// "studio.example.com" or "https://studio.example.com/" → "https://studio.example.com"
 pub fn normalize_url(raw: &str) -> Result<String, String> {
     let t = raw.trim().trim_end_matches('/');
-    let with = if t.starts_with("http://") || t.starts_with("https://") { t.to_string() } else { format!("https://{t}") };
+    // the scheme in any case ("HTTPS://…" once became "https://https")
+    let lower = t.to_ascii_lowercase();
+    let with = if lower.starts_with("http://") || lower.starts_with("https://") { t.to_string() } else { format!("https://{t}") };
     let u = url::Url::parse(&with).map_err(|_| "That doesn't look like a web address".to_string())?;
     let local = matches!(u.host_str(), Some("localhost") | Some("127.0.0.1"));
     if u.scheme() != "https" && !local { return Err("Use an https:// address (http only for localhost)".into()); }
+    if is_protected(&with) { return Err(PROTECTED_MESSAGE.into()); }
     Ok(format!("{}://{}", u.scheme(), u.host_str().unwrap_or("")) + &u.port().map(|p| format!(":{p}")).unwrap_or_default())
 }
 
@@ -94,6 +112,7 @@ fn absorb_cookies(store: &Store, headers: &reqwest::header::HeaderMap) {
 /// A request to the studio, signed in.
 pub fn cloud_request(state: &AppState, method: reqwest::Method, path: &str) -> Result<reqwest::RequestBuilder, String> {
     let base = state.store.settings().cloud_url.ok_or("not connected to a studio")?;
+    if is_protected(&base) { return Err(PROTECTED_MESSAGE.into()); }
     let mut rb = state.net.client.request(method, format!("{base}{path}"));
     if let Some(t) = state.store.secret("cloud_token") { rb = rb.bearer_auth(t); }
     else if let Some(c) = state.store.secret("cloud_cookie") { rb = rb.header(reqwest::header::COOKIE, c); }
@@ -313,4 +332,38 @@ pub async fn download(url: String, name: Option<String>, state: State<'_, AppSta
     drop(f);
     tokio::fs::rename(&tmp, &path).await.map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_live_voicebox_is_refused_however_it_is_written() {
+        for raw in ["voiceboxstudio.pages.dev", "https://voiceboxstudio.pages.dev/", "HTTPS://VoiceBoxStudio.Pages.Dev/home",
+                    "https://voiceboxstudio.pages.dev:443", "https://abc123.voiceboxstudio.pages.dev", "https://voiceboxstudio.pages.dev./"] {
+            assert_eq!(normalize_url(raw), Err(PROTECTED_MESSAGE.to_string()), "{raw} must be refused");
+        }
+    }
+
+    #[test]
+    fn other_studios_still_work() {
+        assert_eq!(normalize_url("studio.example.com/").unwrap(), "https://studio.example.com");
+        assert_eq!(normalize_url("https://creavia-cloud.someone.workers.dev").unwrap(), "https://creavia-cloud.someone.workers.dev");
+        assert_eq!(normalize_url("http://localhost:3000").unwrap(), "http://localhost:3000");
+        // a lookalike is not the protected host
+        assert!(!is_protected("https://notvoiceboxstudio.pages.dev"));
+        assert!(!is_protected("https://voiceboxstudio.pages.dev.example.com"));
+    }
+
+    #[test]
+    fn the_scheme_is_read_in_any_case() {
+        assert_eq!(normalize_url("HTTPS://Studio.Example.com/").unwrap(), "https://studio.example.com");
+    }
+
+    #[test]
+    fn plain_http_is_only_for_this_computer() {
+        assert!(normalize_url("http://studio.example.com").is_err());
+        assert!(normalize_url("not a url at all").is_err());
+    }
 }

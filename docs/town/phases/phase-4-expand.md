@@ -10,6 +10,7 @@
 - [ ] Figma, Canva, Notion, Drive and Dropbox connectors.
 - [ ] The marketplace: plugins and recipes published by creators.
 - [ ] Gmail inbox reading (after the yearly security assessment is affordable).
+- [ ] Self-hosting packages: Docker image, compose, one-click templates, the Connect relay ([../self-hosting.md](../self-hosting.md)).
 - [ ] Products in Money; the phone app (Tauri 2 mobile or React Native).
 
 ## Done when

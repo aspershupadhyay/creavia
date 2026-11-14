@@ -37,8 +37,11 @@ else API="https://api.github.com/repos/$REPO/releases/latest"; fi
 say "Finding the newest Creavia…"
 curl -fsSL -H "Accept: application/vnd.github+json" "$API" -o "$TMP/release.json" \
   || fail "Couldn't reach GitHub. Check your internet connection and try again."
-TAG=$(sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' "$TMP/release.json" | head -n 1)
-URLS=$(sed -n 's/.*"browser_download_url": *"\([^"]*\)".*/\1/p' "$TMP/release.json")
+# GitHub sends this JSON pretty-printed or on one line; put each field on its own line first, or a one-line reply
+# would yield only its last download link (docs/LESSONS.md, 2026-11-14)
+tr ',{}[]' '\n\n\n\n\n' < "$TMP/release.json" > "$TMP/fields"
+TAG=$(sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' "$TMP/fields" | head -n 1)
+URLS=$(sed -n 's/.*"browser_download_url": *"\([^"]*\)".*/\1/p' "$TMP/fields")
 pick() { printf '%s\n' "$URLS" | grep -E "$1" | grep -v '\.sig$' | head -n 1; }
 fetch() { # url → file, with a progress bar
   say "Downloading $(basename "$1")…"

@@ -3,8 +3,8 @@
 Creavia is one app where a creator makes, plans, posts, answers, measures and gets paid, so 10 to 12 subscriptions
 shrink to Creavia plus one or two tools they love. This folder is the plan. **Every session reads it before product
 work** (CLAUDE.md says so). The same plan, with drawings, lives in the doc
-[Creavia: the creator town](https://claude.ai/artifact/JuzgR5Jggu2bBVZX1amo4p); when the two differ, the newer change
-wins, and the other is updated in the same session.
+[Creavia: the creator town](https://claude.ai/artifact/JuzgR5Jggu2bBVZX1amo4p). **This folder is the source of truth;**
+the doc is the readable view, refreshed from here when a phase or stage changes.
 
 ## What is where
 
@@ -13,6 +13,7 @@ wins, and the other is updated in the same session.
 | [town-map.md](town-map.md) | The houses, every feature with its status, the UI and UX structure, plans, risks |
 | [agents.md](agents.md) | Vee and the crew (Juno, Bolt, Tempo, Echo, Lens, Penny, Atlas): jobs, characters, the agent spec, guardrails |
 | [connectors.md](connectors.md) | One tool registry, MCP for every AI, the marketplace, and the free / approval / paying buckets |
+| [self-hosting.md](self-hosting.md) | Hosting Creavia Cloud anywhere: what ties it to Cloudflare today, and the plan |
 | [phases/](phases/) | The product roadmap: Phase 0 (foundation) to Phase 4 (expand), each with what ships and its test |
 | [stages/](stages/) | How we build it, from zero to production, in 12 stages, each with deliverables and a "done when" test |
 

@@ -4,6 +4,15 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-14: no link with the live VoiceBox; more safety nets; host anywhere
+
+- **Nothing in Creavia may touch the running VoiceBox,** so it can't break: the app refuses its address, the Guard
+  workflow fails on any config or code that points at it, and Creavia gets its own cloud and staging.
+- **Add the safety nets:** Dependabot, secret scanning, CodeQL, Rust tests in CI, and practices for architecture,
+  APIs, databases, design, performance, security, observability and releases (docs/ENGINEERING.md).
+- **Let people host the cloud wherever they want:** planned in docs/town/self-hosting.md (ports and adapters now,
+  Docker and templates later).
+
 ## 2026-11-14: build every feature to an elite standard
 
 - **Robust and elite, every feature:** bring suggestions and creativity, audit your own work and learn from it, debug

@@ -24,7 +24,7 @@ export type Item = {
   progress?: number; error?: string; trashedAt?: number; placed?: boolean;
 };
 
-export const DT = "application/x-voicebox-files"; // what an internal drag carries: a JSON list of keys
+export const DT = "application/x-creavia-files"; // what an internal drag carries: a JSON list of keys
 
 export const fmtSize = (b?: number | null) => (!b ? "" : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 export const fmtLen = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, "0")}s` : `${s < 10 ? s.toFixed(1) : Math.round(s)}s`);

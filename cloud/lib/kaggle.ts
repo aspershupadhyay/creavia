@@ -38,7 +38,7 @@ const kaggle = <T>(method: string, body: unknown) => kaggleCall<T>("kernels.Kern
 /** One call to Kaggle's API (the same one the kaggle CLI uses): POST api.kaggle.com/v1/<service>/<method>. */
 export async function kaggleCall<T>(service: string, method: string, body: unknown): Promise<T> {
   const r = await fetch(`${API}/${service}/${method}`, {
-    method: "POST", headers: { Authorization: auth(), "Content-Type": "application/json", "User-Agent": "voicebox-studio" },
+    method: "POST", headers: { Authorization: auth(), "Content-Type": "application/json", "User-Agent": "creavia-cloud" },
     body: JSON.stringify(body), signal: AbortSignal.timeout(30_000), cache: "no-store",
   });
   const text = await r.text();
