@@ -26,7 +26,7 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install with the one command
         env: { CREAVIA_NO_LAUNCH: "1", CREAVIA_FORMAT: "${{ matrix.format }}" }
         run: sh install.sh
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:41
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install with the one command
         env: { CREAVIA_NO_LAUNCH: "1" }
         run: sh install.sh
@@ -64,7 +64,7 @@ jobs:
     name: Windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install with the one command
         shell: pwsh
         run: |

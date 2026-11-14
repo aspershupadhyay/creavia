@@ -13,7 +13,7 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: gitleaks/gitleaks-action@v2
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
@@ -21,7 +21,7 @@ jobs:
   voicebox-stays-separate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: No config, workflow or code points at the live VoiceBox
         run: |
           hits=$(git grep -n -I -i -E 'voiceboxstudio\.pages\.dev|voicebox-studio|voicebox-files' -- \
