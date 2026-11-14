@@ -34,6 +34,22 @@ sharp and on-brand: flat, no gradients, one accent.
 | Penny | A coin badge, a tidy clipboard | Careful, polite, firm about money | "Invoice ready for Brand X, 50% due now." |
 | Atlas | A tiny backpack full of folders | Tidy, quiet, never loses anything | "Filed 12 clips into the launch project." |
 
+## Working like a company
+
+You run the crew the way a company runs its staff: assign work, get it done, review it.
+
+- **Assign a task** to Vee (who delegates) or straight to a crew member, from anywhere: "+ New → Task", a post's menu,
+  or a chat line ("Bolt, cut a Short from this"). A task has a **brief**, an **owner** (an agent or a teammate), a
+  **due date**, **attachments** (the project, files, a post), and a **status**: To do, Working, Needs you, Done.
+- **The Tasks board** (in Ask Vee) shows every task by status and by owner, like a team board; people and agents sit
+  on the same board, so a human editor and Bolt can share a project.
+- **Hand-offs:** a crew member can pass work on (Juno's approved script goes to Bolt, then to Tempo), and each hand-off
+  shows on the task's timeline.
+- **Show the work:** every task keeps its steps, the tools called, the cost, and the result, ready to review, change
+  or send back with a note ("make the hook shorter").
+- **Daily stand-up:** each morning Vee posts one summary on Home: done yesterday, planned today, what needs you.
+- **Job descriptions:** each agent's spec (below) is its job description; its dial is its seniority.
+
 ## How much each agent may do: the dial
 
 1. **Suggest**: only ideas and drafts.
@@ -72,8 +88,9 @@ Each agent gets `docs/town/agents/<name>.md` with these parts before it is built
 - One agent runtime: Vee plans; crew members run as background tasks with their own house's tools from the registry.
 - Durable tasks that survive restarts: steps, retries, a budget in credits and time per task.
 - Memory per workspace (style, voice, audience, rates, results) shared by the crew; each agent keeps notes on its house.
-- Model routing: a cheap fast model for sorting and tagging, a strong one for writing and planning, the creator's own
-  key or local model when they choose.
+- Any model, chosen per agent: the creator picks a provider and model for the whole crew or for each agent (a cheap
+  fast one for Atlas, a strong writer for Juno), with their own keys or a local model ([connectors.md](connectors.md),
+  BYOK).
 - Content from comments, DMs, emails and web pages is **data, never instructions**; injection tests in every release.
 - Home shows a live line per agent; Ask Vee → Tasks lists every job; every action lands in the same log as yours.
 

@@ -28,8 +28,10 @@ It grew out of aspershupadhyay/voicebox-gpu; read docs/PLAN.md for the decisions
 - **Never bundle model weights** in the app or the repo. New models go in `desktop/src-tauri/models.json` (docs/MODELS.md).
 - **Secrets never reach the web view or git.** The desktop's session, tokens and keys stay in Rust (`store.rs`:
   keychain, or a 0600 file on Linux). The cloud's live on the Worker (`.dev.vars.example` lists them).
-- **The studio's screens stay shared:** `cloud/components` runs in the web studio and the app. Desktop-only pages go in
-  `desktop/src/pages`; a hook for the host goes through `ShellHost` (`cloud/components/Shell.tsx`), not a fork.
+- **No VoiceBox UI in the new Creavia.** `cloud/components` is VoiceBox's UI, carried over only so the app works today:
+  do not extend it or copy from it. Creavia's screens are designed from scratch (docs/town/stages/04-ux.md and
+  05-visual-design.md) as one shared set for the app and the web; VoiceBox's back end (API routes, engine, publishing)
+  may sit behind them. Until they replace it, desktop-only pages go in `desktop/src/pages`.
 - **Security of the cloud** is unchanged from VoiceBox: every route checks `isAuthed(req)` (cloud/lib/session.ts);
   never loosen the allow-list, the same-origin check or the session expiry. The desktop reaches the cloud through Rust,
   which sends no Origin, so it needs no exception.

@@ -35,6 +35,28 @@ Every call is logged; a kill switch stops all automation (VoiceBox's approvals, 
   plus recipes, publishable by creators), and "Use Creavia from your AI" setup.
 - **Bring your own key:** ElevenLabs, OpenAI, Anthropic, Google, fal, Replicate; the creator pays the service.
 
+## Bring your own key, like opencode
+
+Every AI feature in Creavia runs on whatever the creator brings: they add a key, pick a provider and a model, and it
+works at once. Creavia's own AI (for people with no key) is just another provider in the same list.
+
+- **Providers:** Anthropic, OpenAI, Google (Gemini), xAI, Mistral, DeepSeek, Groq, OpenRouter, Together, Fireworks,
+  Azure OpenAI, AWS Bedrock, any OpenAI-compatible endpoint, and local models through Ollama or LM Studio. Media
+  providers too: ElevenLabs for voice, fal and Replicate for images and video.
+- **Picking:** one default model for the crew, and an optional model per agent and per job (writing, sorting, vision,
+  voice, images). A model list comes from an open model catalog (as opencode does), showing price, context size, and
+  what each model can do (tools, images, audio).
+- **Setup in one step:** paste a key or sign in where the provider offers it; Creavia tests it with one small call and
+  shows "ready".
+- **Safe keys:** on the desktop, keys stay in the system keychain (Rust); on the web, sealed on the server. Never in
+  the page, never sent to a model, never in logs.
+- **Clear costs:** each task shows which model ran and its token cost at that provider's prices; budgets per day and
+  per agent.
+- **Fallbacks:** if a provider fails or a key runs out, the task pauses and asks, or uses the backup model the creator
+  chose; it never silently switches to a paid Creavia model.
+- **Built on one provider layer** in the code (a provider-agnostic AI SDK), so adding a provider is configuration,
+  not new code.
+
 ## Buckets
 
 From memory as of late 2026; check each provider's current terms and prices before building on it.

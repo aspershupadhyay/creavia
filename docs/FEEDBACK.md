@@ -4,6 +4,16 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-14: a new UI, a company of agents, any AI key
+
+- **Not a single piece of VoiceBox's UI.** Every screen of Creavia is designed from scratch: modern, perfectly
+  crafted, easy for anyone, no clutter. VoiceBox's back end (APIs, engine, publishing) may be reused behind new screens;
+  its components, layouts and styles may not.
+- **Agents work like employees in a company:** you assign a task to a crew member (or to Vee), it has a brief, a due
+  date and a status, they report back, hand off to each other, and show their work.
+- **BYOK like opencode:** anyone brings any provider's key (or a local model), picks the provider and model, and it
+  works at once. Per agent, if they want.
+
 ## 2026-11-14: the creator town
 
 - **Creavia is a creator town:** one app that replaces most of a creator's tools (voice, design, calendar, DMs like

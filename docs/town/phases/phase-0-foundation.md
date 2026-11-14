@@ -16,6 +16,9 @@ tool registry, Home, and the slow outside approvals started.
 - [ ] **The new frame:** sidebar with the ten items, + New, the Vee panel shell, Cmd/Ctrl K, in the Creavia design
       system (Stage 5).
 - [ ] **Home, today:** posting today, waiting comments/DMs, last post's result.
+- [ ] **AI providers (BYOK):** the provider layer, adding a key, picking provider and model, the key test, per-task
+      cost; local models via Ollama / LM Studio.
+- [ ] **Tasks foundation:** the task object (brief, owner, due, status, timeline) that people and agents share.
 - [ ] **Metering:** AI calls, GPU minutes and storage counted per workspace.
 - [ ] **Outside:** domain, registered business, privacy/terms/data-deletion pages; Google verification and Meta App
       Review submitted.

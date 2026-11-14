@@ -1,6 +1,7 @@
 # Stage 5: visual design and design system
 
-**Status:** not started (docs/DESIGN.md is the starting point). **Done when:** every MVP screen is built only from
+**Status:** not started. A new design system from scratch: docs/DESIGN.md gives the brand (matte black, marigold,
+Geist, Vee), but no VoiceBox component, layout or style is reused. **Done when:** every MVP screen is built only from
 library parts, and a review against the eight rules below passes.
 
 | Part | Contents |

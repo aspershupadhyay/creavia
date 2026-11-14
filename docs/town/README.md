@@ -30,4 +30,9 @@ wins, and the other is updated in the same session.
 3. **A house opens only when it is good enough to cancel the tool it replaces.**
 4. **Act-level tools (post, send, spend, delete) ask first**, whatever an agent's dial says.
 5. **The hosted VoiceBox is never changed by Creavia work** (aspershupadhyay/voicebox-gpu stays as it is).
-6. Plain names in the app: Home, Ask Vee, Ideas, Create, Calendar, Inbox, Analytics, Money, Files, Settings.
+6. **No VoiceBox UI.** Every screen is designed new (stages 4 and 5); VoiceBox's back end may sit behind new screens,
+   but none of its components, layouts or styles are reused.
+7. **Bring any AI.** Every AI feature runs on the provider and model the creator picks with their own key, or a local
+   model, like opencode; Creavia's own AI is just one more provider.
+8. **Agents work like employees:** tasks are assigned, briefed, tracked and reported ([agents.md](agents.md)).
+9. Plain names in the app: Home, Ask Vee, Ideas, Create, Calendar, Inbox, Analytics, Money, Files, Settings.

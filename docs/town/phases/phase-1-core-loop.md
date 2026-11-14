@@ -2,7 +2,7 @@
 
 **Status:** not started. Needs Phase 0.
 **Goal:** a short-form creator runs a full week in Creavia: idea → script → voice → subtitles → post to Reels and
-Shorts → see results. Mostly VoiceBox features moved into the new structure and look.
+Shorts → see results. VoiceBox's back-end capabilities behind screens designed from scratch (no VoiceBox UI).
 
 ## What ships
 

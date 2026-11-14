@@ -14,7 +14,7 @@ has an answer for each threat. Keep what runs today; add only what multi-user se
 | Live updates | Neon Realtime; Durable Objects if outgrown | In use |
 | Files | Cloudflare R2; Backblaze B2 for large media | In use |
 | Models we run | Python engine (`engine/`) on the creator's computer, or Modal, Kaggle, Colab | In use |
-| Outside AI | Claude, OpenAI, Gemini… via Creavia's keys or the creator's own | To add |
+| AI providers (BYOK) | One provider-agnostic layer: any provider or local model, picked per agent, keys in the keychain or sealed server-side, like opencode | To add |
 | Agents | Task queue and durable workflows (Cloudflare Queues and Workflows), one runtime, registry tools | To add |
 | Memory and search | Postgres full-text; vectors (pgvector or Cloudflare Vectorize) | To add |
 | MCP | Adaptive endpoint, OAuth, per-AI keys; local MCP in the app | In use |

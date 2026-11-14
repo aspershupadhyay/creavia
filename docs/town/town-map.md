@@ -13,7 +13,8 @@ town name is only how we talk about it.
 
 ## Each house
 
-Status: **Have** (exists from VoiceBox), **Build**, **Connect** (another service), **Later**.
+Status: **Have** (the capability exists in VoiceBox's back end: its API, engine or publishing), **Build**, **Connect**
+(another service), **Later**. Every screen is new whatever the status: no VoiceBox UI is reused.
 
 ### Home (the front gate): your day on one page
 | Feature | What it does | Status |
