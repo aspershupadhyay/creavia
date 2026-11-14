@@ -1,4 +1,5 @@
-# The engine's linter and formatter (ruff), run in CI by .github/workflows/checks.yml.
+# The engine's linter and formatter (ruff), run in CI by .github/workflows/checks.yml. Run it from inside engine/
+# (`cd engine && ruff check . && ruff format --check .`): the file lists below are relative to this folder.
 # Lint: Pyflakes (unused or undefined names, shadowed imports) and syntax errors, everywhere. Format: every file not on
 # the [format] list below, so a mass reformat never hides a real change in a diff (docs/adr/0001-quality-tooling.md).
 line-length = 120

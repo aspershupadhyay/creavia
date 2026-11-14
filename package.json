@@ -14,8 +14,8 @@
     "check": "npm run typecheck -w cloud && npm run typecheck -w desktop",
     "test": "npm test -w desktop && npm test -w cloud && cd desktop/src-tauri && cargo test --lib",
     "test:engine": "python3 -m pytest engine",
-    "lint": "biome ci . && ruff check --config engine/ruff.toml engine && ruff format --config engine/ruff.toml --check engine && cd desktop/src-tauri && cargo fmt --check && cargo clippy --lib --bins --tests -- -D warnings",
-    "format": "biome check --write . && ruff format --config engine/ruff.toml engine && cd desktop/src-tauri && cargo fmt"
+    "lint": "biome ci . && (cd engine && ruff check . && ruff format --check .) && cd desktop/src-tauri && cargo fmt --check && cargo clippy --lib --bins --tests -- -D warnings",
+    "format": "biome check --write . && (cd engine && ruff format .) && cd desktop/src-tauri && cargo fmt"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8"

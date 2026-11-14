@@ -46,6 +46,8 @@ new screens, not polished.
 
 - **Playwright** for the core flows, in a real browser and the real app: needs the flows (sign-up, invite) to exist.
 - **Sentry** for errors: needs an account and a DSN from the owner; opt-in on the desktop (ENGINEERING.md).
+- **Pages in the sweep:** it calls `route.ts` handlers; server pages (`requireLogin`) and server actions get the same
+  treatment with the workspace part of the isolation suite.
 - **Coverage numbers** in CI: once there is enough `lib/` logic under test for a threshold to mean something.
 
 ## Pre-mortem: how this could go wrong, and what guards it

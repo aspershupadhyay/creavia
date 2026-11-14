@@ -38,10 +38,13 @@ jobs:
         with: { python-version: "3.12" }
       - name: Tools (pinned)
         run: pip install ruff==0.16.9 pytest==8.4.2
+      # from inside engine/, so ruff.toml's file lists are read relative to it (with --config they'd follow the cwd)
       - name: Lint (ruff)
-        run: ruff check --config engine/ruff.toml engine
+        working-directory: engine
+        run: ruff check .
       - name: Format (ruff)
-        run: ruff format --config engine/ruff.toml --check engine
+        working-directory: engine
+        run: ruff format --check .
       - name: Every file compiles
         run: python -m py_compile engine/*.py engine/engines/*.py
       - name: Unit tests (pytest)
