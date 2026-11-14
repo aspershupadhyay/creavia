@@ -35,6 +35,8 @@ pub struct Settings {
     pub cloud_url: Option<String>,
     pub cloud_how: Option<String>,
     pub cloud_who: Option<String>,
+    /// Send crash reports (crash.rs). Off until the person turns it on.
+    pub crash_reports: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +52,7 @@ impl Default for Settings {
             cloud_url: None,
             cloud_how: None,
             cloud_who: None,
+            crash_reports: false,
         }
     }
 }
@@ -59,7 +62,8 @@ pub struct Store {
     secrets: Mutex<BTreeMap<String, String>>, // the Linux file store (and a cache elsewhere)
 }
 
-fn settings_path() -> PathBuf {
+/// The settings file (also read by the local engine for the crash-report choice: crash.rs, engine/crashreports.py).
+pub fn settings_path() -> PathBuf {
     data_dir().join("settings.json")
 }
 fn secrets_path() -> PathBuf {

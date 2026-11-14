@@ -24,6 +24,7 @@ import quality  # noqa: E402
 import voicewalk  # noqa: E402
 import r2cache  # noqa: E402
 import bench  # noqa: E402
+import crashreports  # noqa: E402
 
 SECRET = os.environ.get("WORKER_SECRET", "")
 FETCH_ONLY = os.environ.get("VOICEBOX_MODE") == "fetch"  # a CPU runtime started for downloads: only fetch jobs
@@ -4596,6 +4597,7 @@ def worker_loop(q=None):
             job["status"], job["stage"] = "cancelled", "cancelled"
         except Exception as e:
             traceback.print_exc()
+            crashreports.capture(e, job["kind"])
             job["status"], job["stage"], job["error"] = "error", "error", str(e)
         job["finished"] = time.time()
         LAST_ACTIVE[0] = time.time()
@@ -5125,6 +5127,8 @@ def main():
     a = ap.parse_args()
     if len(SECRET) < 24:
         sys.exit("WORKER_SECRET must be set (>= 24 chars)")
+    if crashreports.init(C.VERSION):
+        log("error reports: on (Sentry)")
     threading.Thread(target=worker_loop, daemon=True).start()
     threading.Thread(target=worker_loop, args=(CPU_QUEUE,), daemon=True).start()
     for _ in range(BENCH_WORKERS):

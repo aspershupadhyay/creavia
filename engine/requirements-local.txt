@@ -6,3 +6,5 @@ soundfile
 huggingface_hub
 yt-dlp
 curl_cffi
+# error reports, only when the person turns them on in the app (crashreports.py)
+sentry-sdk>=2.75.0

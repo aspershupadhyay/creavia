@@ -33,6 +33,8 @@ percent-encoding = "2"
 once_cell = "1"
 parking_lot = "0.12"
 log = "0.4"
+# crash reports, only when the person turns them on (src/crash.rs); rustls, like reqwest above
+sentry = { version = "0.49.5", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 keyring = { version = "3", features = ["apple-native", "windows-native"] }

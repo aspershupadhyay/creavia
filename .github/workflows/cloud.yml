@@ -18,6 +18,9 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Sentry (docs/adr/0003-sentry.md): the browser's DSN, built in; unset means no Sentry in the browser. The
+      # Worker's own SENTRY_DSN and ENGINE_SENTRY_DSN are set on the Worker (wrangler secret put), not here.
+      NEXT_PUBLIC_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLOUD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

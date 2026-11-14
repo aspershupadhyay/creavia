@@ -127,6 +127,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # crash reports (src-tauri/src/crash.rs): built in, sent only if the person turns them on; unset = none
+          CREAVIA_SENTRY_DSN: ${{ vars.SENTRY_DSN_DESKTOP }}
+          CREAVIA_ENGINE_SENTRY_DSN: ${{ vars.SENTRY_DSN_ENGINE }}
         with:
           projectPath: desktop
           args: ${{ matrix.args }} ${{ steps.upd.outputs.args }}

@@ -4,6 +4,12 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-14: Sentry everywhere, replays only on errors
+
+- **Sentry in all three parts:** the cloud, the desktop app and the engine, each its own project in the `creavia`
+  organization (docs/adr/0003-sentry.md).
+- **Session Replay only for sessions that hit an error**, with everything masked; no sampling of normal sessions.
+
 ## 2026-11-14: no link with the live VoiceBox; more safety nets; host anywhere
 
 - **Nothing in Creavia may touch the running VoiceBox,** so it can't break: the app refuses its address, the Guard

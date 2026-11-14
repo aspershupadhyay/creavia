@@ -78,9 +78,9 @@ export const mcpRotate = () => call<McpStatus>("mcp_rotate");
 
 // ── settings kept by the app ──────────────────────────────────────────────────────────────────────────────────────
 export type AppSettings = { hf_token_set: boolean; models_dir: string; mcp_autostart: boolean; engine_autostart: boolean;
-  onboarded: boolean; launch_at_login: boolean };
+  onboarded: boolean; launch_at_login: boolean; crash_reports: boolean; crash_reports_available: boolean };
 export const appSettings = () => call<AppSettings>("settings_get");
-export const saveSettings = (patch: Partial<AppSettings> & { hf_token?: string }) => call<AppSettings>("settings_set", { patch });
+export const saveSettings = (patch: Partial<Omit<AppSettings, "crash_reports_available">> & { hf_token?: string }) => call<AppSettings>("settings_set", { patch });
 
 // ── updates (signed, from GitHub Releases; updater.rs) ─────────────────────────────────────────────────────────────
 export type UpdateInfo = { version: string; current: string; notes: string | null; date: string | null };

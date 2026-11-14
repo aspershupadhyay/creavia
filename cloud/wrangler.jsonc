@@ -3,7 +3,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "creavia-cloud",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   // your own Cloudflare account (one click, or `npm run setup`: docs/DEPLOY.md); served at its workers.dev address
   // until you add a custom domain (then set APP_URL to it)
   "workers_dev": true,

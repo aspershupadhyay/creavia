@@ -28,7 +28,9 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
   a sweep that calls every cloud route signed out ([ADR 0001](../adr/0001-quality-tooling.md)).
 - **Playwright is in** (2026-11-14): sign-in and first-run flows in the cloud and the desktop, at full width and
   390 px, on every pull request ([ADR 0002](../adr/0002-end-to-end-tests.md)).
-- **Next:** the rest of the quality foundation (Sentry, then Playwright past sign-in once staging exists; see
+- **Sentry is in** (2026-11-14): errors from the cloud, the desktop (only if the person turns it on) and the engine,
+  with nothing personal sent; a real error from each was confirmed ([ADR 0003](../adr/0003-sentry.md)).
+- **Next:** the rest of the quality foundation (Playwright past sign-in once staging exists; see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.
