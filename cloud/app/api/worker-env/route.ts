@@ -10,6 +10,8 @@ export async function GET(req: Request) {
   // a model trained from the dashboard (kept in R2) unless MY_VOICE_MODEL points at one on Hugging Face
   const trained = process.env.MY_VOICE_MODEL ? null : await adapterUrl().catch(() => null);
   return Response.json({ HF_TOKEN: process.env.HF_TOKEN || null, MY_VOICE_MODEL: process.env.MY_VOICE_MODEL || null,
-    MY_VOICE_SPEAKER: process.env.MY_VOICE_SPEAKER || trained?.speaker || null, MY_VOICE_ADAPTER_URL: trained?.url ?? null },
+    MY_VOICE_SPEAKER: process.env.MY_VOICE_SPEAKER || trained?.speaker || null, MY_VOICE_ADAPTER_URL: trained?.url ?? null,
+    // where the engine reports its errors (engine/crashreports.py); not a secret, and unset means no reports
+    SENTRY_DSN: process.env.ENGINE_SENTRY_DSN || null },
     { headers: { "Cache-Control": "no-store" } });
 }

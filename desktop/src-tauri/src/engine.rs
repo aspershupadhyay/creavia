@@ -265,6 +265,11 @@ pub async fn start(
     if let Some(t) = state.store.secret("hf_token") {
         cmd.env("HF_TOKEN", t);
     }
+    // the engine reports its errors only while the person has crash reports on: it reads that choice from the
+    // settings file before each report, so the switch reaches it while it runs (crash.rs, engine/crashreports.py)
+    if let Some((dsn, consent)) = crate::crash::engine_reporting(&crate::store::settings_path()) {
+        cmd.env("SENTRY_DSN", dsn).env("CREAVIA_CONSENT_FILE", consent);
+    }
     #[cfg(unix)]
     cmd.process_group(0);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;

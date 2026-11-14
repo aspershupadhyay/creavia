@@ -1,6 +1,7 @@
 //! Creavia desktop: the studio's screens in a native window, with Rust underneath for what a browser can't do well:
 //! holding your sign-in, every network call (net.rs), downloading models you pick (models.rs), running the engine
 //! on this computer (engine.rs), an MCP server for your AI apps (mcp.rs) and knowing the machine (sys.rs).
+mod crash;
 mod engine;
 mod mcp;
 mod models;
@@ -36,6 +37,9 @@ struct AppSettings {
     engine_autostart: bool,
     onboarded: bool,
     launch_at_login: bool,
+    crash_reports: bool,
+    /// false in builds with no crash-report address (development, forks): the switch is hidden
+    crash_reports_available: bool,
 }
 
 fn app_settings(state: &AppState) -> AppSettings {
@@ -47,6 +51,8 @@ fn app_settings(state: &AppState) -> AppSettings {
         engine_autostart: s.engine_autostart,
         onboarded: s.onboarded,
         launch_at_login: s.launch_at_login,
+        crash_reports: s.crash_reports && crash::available(),
+        crash_reports_available: crash::available(),
     }
 }
 
@@ -57,6 +63,7 @@ struct Patch {
     engine_autostart: Option<bool>,
     onboarded: Option<bool>,
     launch_at_login: Option<bool>,
+    crash_reports: Option<bool>,
 }
 
 #[tauri::command]
@@ -90,7 +97,13 @@ fn settings_set(patch: Patch, state: State<'_, AppState>) -> Result<AppSettings,
         if let Some(v) = patch.launch_at_login {
             s.launch_at_login = v;
         }
+        if let Some(v) = patch.crash_reports {
+            s.crash_reports = v;
+        }
     });
+    if let Some(v) = patch.crash_reports {
+        crash::set_enabled(v);
+    }
     Ok(app_settings(&state))
 }
 
@@ -111,6 +124,8 @@ pub fn run() {
         mcp: Arc::new(mcp::Mcp::default()),
     };
     let for_scheme = state.clone();
+    // crash reports first, so a failure while starting is caught too (only if the person turned them on)
+    crash::start(state.store.settings().crash_reports);
 
     // `creavia --self-check[=full]`: test the Rust side headless, then exit (selfcheck.rs)
     if let Some(arg) = std::env::args().find(|a| a.starts_with("--self-check")) {
@@ -210,6 +225,7 @@ pub fn run() {
             updater::update_check,
             updater::update_install,
             updater::app_version,
+            crash::crash_report_web,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Creavia");

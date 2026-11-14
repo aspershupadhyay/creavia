@@ -1,9 +1,10 @@
 // This computer at a glance: the machine, the engine, the models, the MCP and the studio connection, with the next
 // step for each.
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ArrowsClockwise, BookOpenText, CloudArrowUp, Cpu, Globe, HardDrives, Memory, Plugs, Sparkle } from "@phosphor-icons/react";
+import { ArrowRight, ArrowsClockwise, BookOpenText, CloudArrowUp, Cpu, Globe, HardDrives, Memory, Plugs, ShieldCheck, Sparkle } from "@phosphor-icons/react";
 import { PageHeader } from "@/components/ui";
-import { engineStatus, inTauri, mcpStatus, modelsState, systemInfo, type EngineStatus, type McpStatus, type ModelState, type SystemInfo } from "../bridge/native";
+import { engineStatus, inTauri, mcpStatus, saveSettings, modelsState, systemInfo, type EngineStatus, type McpStatus, type ModelState, type SystemInfo } from "../bridge/native";
 import { useConn } from "../shell/conn";
 import { useDownloads } from "../shell/downloads";
 import { gb, usePoll } from "../shell/hooks";
@@ -13,13 +14,28 @@ import { checkForUpdate, installUpdate, useUpdate } from "../shell/updates";
 const off = <T,>() => Promise.reject<T>(new Error("preview"));
 
 export default function ThisComputer() {
-  const { conn } = useConn();
+  const { conn, settings, refresh } = useConn();
   const sys = usePoll<SystemInfo>(() => (inTauri() ? systemInfo() : off()), 30_000);
   const eng = usePoll<EngineStatus>(() => (inTauri() ? engineStatus() : off()), 5000);
   const mcp = usePoll<McpStatus>(() => (inTauri() ? mcpStatus() : off()), 5000);
   const models = usePoll<ModelState[]>(() => (inTauri() ? modelsState() : off()), 6000);
   const dls = useDownloads();
   const up = useUpdate();
+  // the crash-report switch: one change at a time, and a failure is said, not swallowed
+  const [reportsBusy, setReportsBusy] = useState(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const toggleReports = async (on: boolean) => {
+    setReportsBusy(true);
+    setReportsError(null);
+    try {
+      await saveSettings({ crash_reports: on });
+      await refresh();
+    } catch (e) {
+      setReportsError(`Couldn’t save that: ${(e as Error).message}`);
+    } finally {
+      setReportsBusy(false);
+    }
+  };
   const s = sys.data, g = s?.gpus[0];
   const have = (models.data ?? []).filter((m) => m.complete).length;
   const busy = Object.values(dls).some((d) => d.state === "running") || !!eng.data?.running;
@@ -89,6 +105,21 @@ export default function ThisComputer() {
           <ArrowRight size={16} />
         </Link>
       </div>
+
+      {settings?.crash_reports_available && (
+        <div className="cr-card cr-upd" style={{ marginTop: 12 }}>
+          <span className="cr-upd-ic"><ShieldCheck size={18} weight="duotone" /></span>
+          <div>
+            <b>{settings.crash_reports ? "Crash reports are on" : "Help fix crashes"}</b>
+            <span>When Creavia or its engine hits an error, send what broke and where, with the app version. Never your files, your studio, your name or this computer&rsquo;s name.</span>
+            {reportsError && <span role="alert" className="err">{reportsError}</span>}
+          </div>
+          <button type="button" className={settings.crash_reports ? "sm ghost" : "sm cr-cta"} aria-pressed={settings.crash_reports}
+            disabled={reportsBusy} onClick={() => toggleReports(!settings.crash_reports)}>
+            {settings.crash_reports ? "Turn off" : "Turn on"}
+          </button>
+        </div>
+      )}
 
       {conn?.mode !== "cloud" && (
         <Link to="/local/deploy" className="cr-banner">

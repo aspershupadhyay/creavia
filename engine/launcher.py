@@ -51,6 +51,12 @@ def ensure_tools():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "numpy", "scipy", "soundfile"])
     if subprocess.call(["which", "uv"], stdout=subprocess.DEVNULL) != 0:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "uv"])
+    if os.environ.get("SENTRY_DSN"):  # error reports (crashreports.py): only installed when the studio asks for them
+        try:
+            import sentry_sdk  # noqa: F401
+        except ImportError:
+            if subprocess.call([sys.executable, "-m", "pip", "install", "-q", "sentry-sdk>=2.75.0"]) != 0:
+                log("couldn't install sentry-sdk: running without error reports")
 
 
 def fetch_cloudflared():
@@ -215,7 +221,8 @@ def main():
         os.environ["VOICEBOX_VRAM_GB"] = setting("VOICEBOX_VRAM_GB")
     # optional Hugging Face read token: anonymous downloads of 50-70 GB video models get rate-limited (HTTP 429)
     # and your own voice model (MY_VOICE_MODEL / MY_VOICE_SPEAKER, from the training notebook)
-    wanted = ("HF_TOKEN", "MY_VOICE_MODEL", "MY_VOICE_SPEAKER", "MY_VOICE_ADAPTER_URL")
+    # SENTRY_DSN: where the engine reports its errors (crashreports.py), set on the studio as ENGINE_SENTRY_DSN
+    wanted = ("HF_TOKEN", "MY_VOICE_MODEL", "MY_VOICE_SPEAKER", "MY_VOICE_ADAPTER_URL", "SENTRY_DSN")
     for k in wanted:
         if not os.environ.get(k) and setting(k):
             os.environ[k] = setting(k)

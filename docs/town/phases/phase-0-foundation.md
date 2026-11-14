@@ -18,8 +18,9 @@ tool registry, Home, and the slow outside approvals started.
   - [x] Playwright: sign-in and first-run flows in the cloud and the desktop, at full width and 390 px
         (`e2e/`, [ADR 0002](../../adr/0002-end-to-end-tests.md))
   - [ ] Playwright past sign-in, then sign-up and invites (needs the staging cloud, below)
-  - [ ] Sentry for errors (opt-in on the desktop). The owner's Sentry account is ready; its setup code must be made
-        with "Use IP pinning" off, since setup runs in the cloud, not on the owner's network
+  - [x] Sentry for errors in the cloud, the desktop (opt-in) and the engine, a real error from each confirmed
+        ([ADR 0003](../../adr/0003-sentry.md))
+  - [ ] Owner: the Sentry variables and secret in GitHub and on the Worker (ADR 0003, "For the owner, once")
 - [ ] **A Creavia cloud of its own, plus staging:** the `creavia-cloud` Worker, the `creavia` bucket, its own Neon
       project, and a staging copy with test accounts. Never the live VoiceBox (blocked in the app and by the Guard
       workflow).

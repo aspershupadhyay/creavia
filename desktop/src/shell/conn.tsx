@@ -7,7 +7,7 @@ const C = createContext<Ctx>({ conn: null, settings: null, refresh: async () => 
 export const useConn = () => useContext(C);
 
 const preview: Connection = { mode: "none", url: null, how: null, who: null };
-const previewSettings: AppSettings = { hf_token_set: false, models_dir: "~/Creavia/engine", mcp_autostart: false, engine_autostart: false, onboarded: false, launch_at_login: false };
+const previewSettings: AppSettings = { hf_token_set: false, models_dir: "~/Creavia/engine", mcp_autostart: false, engine_autostart: false, onboarded: false, launch_at_login: false, crash_reports: false, crash_reports_available: false };
 
 export function ConnProvider({ children }: { children: React.ReactNode }) {
   const [conn, setConn] = useState<Connection | null>(null);
