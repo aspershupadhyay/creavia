@@ -12,7 +12,7 @@
     "cloud:dev": "npm run dev -w cloud",
     "cloud:deploy": "node cloud/scripts/deploy.mjs",
     "check": "npm run typecheck -w cloud && npm run typecheck -w desktop",
-    "test": "npm test -w desktop"
+    "test": "npm test -w desktop && cd desktop/src-tauri && cargo test --lib"
   },
   "engines": {
     "node": ">=20"

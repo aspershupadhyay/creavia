@@ -9,6 +9,12 @@ tool registry, Home, and the slow outside approvals started.
 - [ ] **Quality foundation (first):** test runners in every part (Vitest in desktop ✓ with the first test, Vitest in
       cloud, `cargo test`, pytest in engine), a linter and formatter, the shared workspace-isolation suite, Playwright
       for core flows, Sentry for errors; CI blocks merges on all of them (docs/ENGINEERING.md).
+- [ ] **A Creavia cloud of its own, plus staging:** the `creavia-cloud` Worker, the `creavia` bucket, its own Neon
+      project, and a staging copy with test accounts. Never the live VoiceBox (blocked in the app and by the Guard
+      workflow).
+- [ ] **Ports and adapters:** storage, database, realtime, queues, email, payments and AI behind `cloud/lib/ports/`, so
+      Creavia stays portable ([../self-hosting.md](../self-hosting.md)) and testable.
+- [ ] **Translation layer** for every user-facing string, English first.
 - [ ] **Workspaces:** a `workspace_id` on every row (posts, comments, files, voices, connections, settings, jobs) and
       every R2/B2 key prefix; one place that sets it per request; Postgres row-level security as a second lock.
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.

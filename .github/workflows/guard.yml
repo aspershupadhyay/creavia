@@ -1,0 +1,35 @@
+# Guards on every change: no secrets in commits, and no link to the live VoiceBox.
+# - Secrets: gitleaks scans the commits of each push and pull request.
+# - VoiceBox: Creavia must never deploy to, write to or connect to the owner's live VoiceBox (aspershupadhyay/voicebox-gpu:
+#   the voicebox-studio Worker, the voicebox-files bucket, voiceboxstudio.pages.dev). Its names may appear only in docs
+#   and in the app's list of studios it refuses to connect to (desktop/src-tauri/src/net.rs).
+name: Guard
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  voicebox-stays-separate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No config, workflow or code points at the live VoiceBox
+        run: |
+          hits=$(git grep -n -I -i -E 'voiceboxstudio\.pages\.dev|voicebox-studio|voicebox-files' -- \
+            ':!docs/**' ':!*.md' ':!desktop/src-tauri/src/net.rs' ':!.github/workflows/guard.yml' \
+            ':!cloud/lib/auto/playbook-docs.ts' || true)
+          if [ -n "$hits" ]; then
+            echo "These lines point at the live VoiceBox. Creavia must stay separate from it:"; echo "$hits"; exit 1
+          fi
+          grep -q '"name": "creavia-cloud"' cloud/wrangler.jsonc || { echo "cloud/wrangler.jsonc must deploy the creavia-cloud Worker"; exit 1; }
+          grep -q '"bucket_name": "creavia"' cloud/wrangler.jsonc || { echo "cloud/wrangler.jsonc must use the creavia bucket"; exit 1; }
+          echo "Creavia is separate from the live VoiceBox."

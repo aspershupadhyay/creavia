@@ -80,6 +80,76 @@ read and change without fear. CLAUDE.md sends every session here; a feature is n
 - The owner's feedback goes in `docs/FEEDBACK.md` with the change.
 - After each phase: a short retro in `docs/LESSONS.md` (what went well, what to change).
 
+## 8. Practices by discipline
+
+### Architecture
+- **Ports and adapters.** Business logic never calls a vendor directly: storage, database, queues, realtime, email,
+  payments, AI providers and the GPU pool each sit behind one small interface in `cloud/lib/ports/`, with one adapter
+  per vendor (Cloudflare R2, S3, MinIO; Neon, plain Postgres; …). This keeps Creavia portable (self-hosting,
+  [town/self-hosting.md](town/self-hosting.md)) and testable (fake adapters in tests).
+- **Decision records:** every big choice gets a short note in `docs/adr/NNNN-title.md`: context, decision,
+  alternatives, consequences.
+- **One way to do each thing:** one tool registry, one HTTP client, one logger, one date library, one form pattern.
+- **Configuration from the environment**, validated at start-up with a clear message for anything missing.
+
+### API and tools
+- One error shape everywhere: `{ error: { code, message, fix? } }` with the right HTTP status; `message` is for people.
+- Lists are paginated (a cursor, a limit with a maximum); nothing returns "everything".
+- Writes that must not repeat (posting, payments, DMs, invoices) take an idempotency key.
+- Inputs validated with zod at the edge; tool schemas generated from the same zod types.
+- Breaking changes to the public API or MCP tools get a new version; the old one keeps working until clients move.
+
+### Database
+- **Migrations only:** a new `cloud/db/NNN_*.sql` per change, idempotent, never editing a shipped file; tried on a
+  database branch (Neon) first; written to be safe while the old code still runs (add, back-fill, then remove).
+- **Every table has** `id`, `workspace_id` (except global tables), `created_at`, `updated_at`; foreign keys and the
+  indexes that queries use; constraints for what must be true (not just app code).
+- **Row-level security** on workspace tables as a second lock behind the app's own checks.
+- **No N+1 queries:** load lists in one query; measure slow queries and index them.
+- **Soft delete with a 30-day trash** for what people make; hard delete for what privacy law requires.
+- **Backups daily and a monthly restore drill**; personal data minimised and deletable per person.
+
+### Design (with docs/DESIGN.md and town/stages/05-visual-design.md)
+- Every screen starts from the design system; a new component needs a reason and is added to the system, not one page.
+- Every state is designed: empty, loading, error, offline, partial, too much data, no permission.
+- Real content in designs and tests, never lorem ipsum. Long names, other languages and big numbers checked.
+- Accessibility is part of done: contrast 4.5:1, labels, keyboard, focus, screen reader names, reduced motion.
+- **Words through the translation layer from day one:** no user-facing string in components; English first, other
+  languages later without code changes. Dates, numbers and currency formatted per locale.
+- Phone width (390 px) and the desktop app checked for every screen.
+
+### Performance
+- Budgets, checked in CI: app opens under 2 s; a screen shows data under 1 s; the web page's first load stays small;
+  memory steady when idle.
+- Lists virtualised past a few hundred rows; images sized and lazy-loaded; no polling where a push will do.
+
+### Security and privacy
+- Least privilege for every key, token, agent and AI; secrets never in code, logs, the browser or a model.
+- Every route: signed in, right workspace, right role, rate limited. Every webhook: signature checked.
+- Dependencies scanned (Dependabot, CodeQL); secrets scanned on every push (gitleaks, `.github/workflows/guard.yml`).
+- Agents treat outside content as data, never instructions (prompt-injection tests).
+
+### Observability
+- Errors to Sentry (app and cloud), usage to PostHog, both opt-in on the desktop and free of personal content.
+- Structured logs with a request id that follows a task through the API, queue, agent and GPU.
+- Alerts on what users feel: failed posts, failed DMs, failed payments, agent errors, slow screens.
+
+### Releases
+- Semantic versions; a short changelog in plain words with each release.
+- Staged rollout for risky changes (flags, then a percentage of workspaces), with a quick way back.
+- The install and app-open tests on Windows, macOS and Linux before any release is published.
+
+### The plan's source of truth
+- **The repo (`docs/town/`) is the source of truth.** The doc is the readable view with drawings: update it when a
+  phase or stage changes, from the repo, not the other way round.
+
+### Keep the live VoiceBox safe
+- Creavia never deploys to, writes to or connects to the live VoiceBox (the voicebox-studio Worker, the voicebox-files
+  bucket, voiceboxstudio.pages.dev). The app refuses to sign in to it (`PROTECTED_HOSTS` in
+  `desktop/src-tauri/src/net.rs`, with tests), and the Guard workflow fails if a config or code line points at it.
+- Creavia has its own cloud (`creavia-cloud` Worker, `creavia` bucket, its own Neon project) and a staging copy for
+  tests; test data never touches anyone's real studio.
+
 ## Definition of done (every feature)
 
 - [ ] Meets its spec's acceptance criteria; pre-mortem items each have a test or guard
@@ -88,4 +158,5 @@ read and change without fear. CLAUDE.md sends every session here; a feature is n
 - [ ] Audited: diff read, review tools run, findings fixed
 - [ ] Checked in the real app at full width and 390 px (and on the three systems for desktop changes)
 - [ ] Its actions are registry tools with permission levels
+- [ ] Strings through the translation layer; every state designed (empty, loading, error, offline)
 - [ ] Docs, the in-app guide, `docs/town` status, and `docs/FEEDBACK.md` / `docs/LESSONS.md` updated

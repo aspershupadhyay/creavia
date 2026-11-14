@@ -21,6 +21,13 @@ It grew out of aspershupadhyay/voicebox-gpu; read docs/PLAN.md for the decisions
    aspershupadhyay/voicebox-gpu: read it only as a reference (to port a feature, or to check an API the app calls),
    and never change it from Creavia work. A session that ports features needs both repos attached.
 
+## Keep the live VoiceBox safe
+
+Creavia never deploys to, writes to or connects to the owner's live VoiceBox (the voicebox-studio Worker, the
+voicebox-files bucket, voiceboxstudio.pages.dev). The app refuses to sign in to it (`PROTECTED_HOSTS` in
+`desktop/src-tauri/src/net.rs`); `.github/workflows/guard.yml` fails if any config or code points at it. Creavia uses its
+own cloud (`creavia-cloud`, the `creavia` bucket, its own database) and a staging copy for tests.
+
 ## Read first
 
 - `docs/FEEDBACK.md`: the owner's feedback, newest first; it wins over older rules. Add new feedback there in the same
