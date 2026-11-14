@@ -12,6 +12,8 @@ tool registry, Home, and the slow outside approvals started.
 - [ ] **A Creavia cloud of its own, plus staging:** the `creavia-cloud` Worker, the `creavia` bucket, its own Neon
       project, and a staging copy with test accounts. Never the live VoiceBox (blocked in the app and by the Guard
       workflow).
+- [ ] **Retest live updates on staging:** `@neon/realtime` moved 0.1 → 0.2 (a 0.x minor can break); check the
+      client and server still talk before relying on it.
 - [ ] **Ports and adapters:** storage, database, realtime, queues, email, payments and AI behind `cloud/lib/ports/`, so
       Creavia stays portable ([../self-hosting.md](../self-hosting.md)) and testable.
 - [ ] **Translation layer** for every user-facing string, English first.

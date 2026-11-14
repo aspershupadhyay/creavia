@@ -19,9 +19,12 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
 
 ## Where we are
 
-- **Now:** Phase 0 (foundation) has not started. VoiceBox's features exist in Creavia's `cloud/` as the studio's
-  screens; the desktop app (0.1.2) ships with in-app updates.
-- **Next:** Stage 1 to 3 for Phase 0 (strategy page, research plan, PRDs), then the Phase 0 build.
+- **Ready to build (2026-11-14):** the plan, the engineering standard (docs/ENGINEERING.md), the lessons log, CI with
+  tests, Guard (secrets, VoiceBox separation), CodeQL and Dependabot (minor and patch only) are in place. `main` is the
+  default branch and is protected: every change is a pull request that passes the required checks. The desktop app
+  (0.1.2) ships with in-app updates; VoiceBox's UI still runs in `cloud/components` until the new screens replace it.
+- **Next:** Phase 0, first item: the quality foundation ([phases/phase-0-foundation.md](phases/phase-0-foundation.md)),
+  then Stage 1 to 3 for Phase 0 (strategy page, research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.
 
 ## Rules that come from this plan
