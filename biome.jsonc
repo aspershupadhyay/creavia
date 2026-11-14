@@ -11,6 +11,8 @@
       "cloud/**",
       "desktop/src/**",
       "desktop/*.ts",
+      "e2e/**",
+      "playwright.config.ts",
       "!cloud/lib/bundle.ts",
       "!cloud/lib/schema.ts",
       "!cloud/lib/auto/playbook-docs.ts",

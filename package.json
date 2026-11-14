@@ -11,14 +11,16 @@
     "desktop:build": "npm run tauri -w desktop -- build",
     "cloud:dev": "npm run dev -w cloud",
     "cloud:deploy": "node cloud/scripts/deploy.mjs",
-    "check": "npm run typecheck -w cloud && npm run typecheck -w desktop",
+    "check": "npm run typecheck -w cloud && npm run typecheck -w desktop && tsc -p e2e --noEmit",
     "test": "npm test -w desktop && npm test -w cloud && cd desktop/src-tauri && cargo test --lib",
     "test:engine": "python3 -m pytest engine",
+    "e2e": "npm run build -w desktop && npm run build -w cloud && playwright test",
     "lint": "biome ci . && (cd engine && ruff check . && ruff format --check .) && cd desktop/src-tauri && cargo fmt --check && cargo clippy --lib --bins --tests -- -D warnings",
     "format": "biome check --write . && (cd engine && ruff format .) && cd desktop/src-tauri && cargo fmt"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.8"
+    "@biomejs/biome": "2.3.8",
+    "@playwright/test": "1.63.0"
   },
   "engines": {
     "node": ">=20"

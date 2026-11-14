@@ -1,7 +1,8 @@
 # Checks on every pull request and every push to main, whatever it touches, so branch protection can require them:
 # lint and format (Biome, ruff, rustfmt, clippy), unit tests in every part (Vitest in cloud and desktop, cargo test,
 # pytest in the engine), and the cloud's signed-out sweep of every route (cloud/test/routes.test.ts), the first part of
-# the workspace-isolation suite. The builds and the self-check stay in cloud.yml and desktop.yml.
+# the workspace-isolation suite, and the core flows end to end in Chromium (Playwright, e2e/). The Workers build and
+# the Rust self-check stay in cloud.yml and desktop.yml.
 # docs/adr/0001-quality-tooling.md says why each tool, and how files written before them are handled.
 name: Checks
 on:
@@ -28,6 +29,23 @@ jobs:
         run: npm test -w desktop
       - name: Cloud unit tests and the signed-out sweep of every route
         run: npm test -w cloud
+
+  e2e:
+    name: End to end (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - name: Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Build the cloud and the desktop web view, then test them at full width and 390 px
+        run: npm run e2e
+      - name: The report, when something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: playwright-report, path: playwright-report, retention-days: 7 }
 
   engine:
     name: Engine (lint, tests)

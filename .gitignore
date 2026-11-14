@@ -11,6 +11,8 @@ target/
 .dev.vars
 cloud/next-env.d.ts
 *.tsbuildinfo
+test-results/
+playwright-report/
 __pycache__/
 *.pyc
 .local/

@@ -26,7 +26,9 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
 - **Phase 0 started (2026-11-14):** the quality foundation's first part is in: tests in every part (Vitest in cloud
   and desktop, `cargo test`, pytest), Biome, ruff, rustfmt and clippy, one `Checks` workflow on every pull request, and
   a sweep that calls every cloud route signed out ([ADR 0001](../adr/0001-quality-tooling.md)).
-- **Next:** the rest of the quality foundation (Playwright, Sentry; see
+- **Playwright is in** (2026-11-14): sign-in and first-run flows in the cloud and the desktop, at full width and
+  390 px, on every pull request ([ADR 0002](../adr/0002-end-to-end-tests.md)).
+- **Next:** the rest of the quality foundation (Sentry, then Playwright past sign-in once staging exists; see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.
