@@ -1,4 +1,6 @@
 # Dependency updates, a few at a time, each through CI (docs/ENGINEERING.md, step 6). Read the changelog before merging.
+# Only minor and patch updates come automatically; a major upgrade (vite, TypeScript, Tauri…) is a planned task with
+# its own tests, never a drive-by merge.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -8,6 +10,9 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: cargo
     directory: /desktop/src-tauri
     schedule: { interval: weekly, day: monday }
@@ -15,11 +20,20 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: pip
     directory: /engine
     schedule: { interval: monthly }
     open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
