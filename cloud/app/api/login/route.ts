@@ -4,6 +4,7 @@
 import { after } from "next/server";
 import { allowedEmails, clientIp, emailAllowed, lockedFor, noteAttempt } from "@/lib/access";
 import { endSession, startSession, tokenOk } from "@/lib/session";
+import { FOUNDING } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,9 @@ export async function POST(req: Request) {
     }
     try {
       const user = await (await import("@/lib/users")).createAccount(email, password, name);
-      await startSession("user", user.email, user);
+      // on the studio's list, so a member of its workspace (the first one, until sign-up makes workspaces: PRD slice 3)
+      await (await import("@/lib/memberships")).joinWorkspace(user.id, FOUNDING);
+      await startSession("user", user.email, user, FOUNDING);
       note(req, true, user.email, "sign-up");
       return Response.json({ ok: true, user, workspace: true });
     } catch (e) {
@@ -62,7 +65,9 @@ export async function POST(req: Request) {
         await slow();
         return Response.json({ error: `${user.email} isn't on this studio's list. Ask the owner to add you in Settings → Security.` }, { status: 403 });
       }
-      await Promise.all([user.member ? null : setMember(user.email, true), startSession("user", user.email, { id: user.id, name: user.name, email: user.email })]);
+      // on the list, so in the studio's workspace (joining first: the session is checked against it)
+      await Promise.all([user.member ? null : setMember(user.email, true), (await import("@/lib/memberships")).joinWorkspace(user.id, FOUNDING)]);
+      await startSession("user", user.email, { id: user.id, name: user.name, email: user.email }, FOUNDING);
       note(req, true, user.email, ok === "founder" ? "account (founded the studio)" : "account");
       return Response.json({ ok: true, user: { id: user.id, name: user.name, email: user.email }, workspace: true });
     } catch (e) {

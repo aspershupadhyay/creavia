@@ -25,7 +25,13 @@ vi.mock("./access", () => ({
 const github = { logins: [] as string[] };
 vi.mock("./github", () => ({ allowedLogins: async () => github.logins }));
 
-const { COOKIE, SESSION_DAYS, isAuthed, startSession, tokenOk, endSession } = await import("./session");
+// Who is in which workspace ("email workspace"): normally the memberships table (lib/memberships.ts).
+const members = new Set<string>();
+vi.mock("./memberships", () => ({ isMember: async (email: string, w: string) => members.has(`${email} ${w}`) }));
+
+const { COOKIE, SESSION_DAYS, isAuthed, sessionWorkspace, startSession, tokenOk, endSession } = await import(
+  "./session"
+);
 
 const TOKEN = "a-test-master-key-of-32-characters!";
 const SITE = "https://studio.example";
@@ -40,6 +46,8 @@ beforeEach(() => {
   access.epoch = 0;
   access.emails = ["ana@example.com"];
   github.logins = [];
+  members.clear();
+  members.add("ana@example.com w_founding");
   vi.stubEnv("MCP_TOKEN", TOKEN);
 });
 afterEach(() => vi.useRealTimers());
@@ -153,6 +161,44 @@ describe("isAuthed: the session ticket", () => {
   it("refuses to start a session while the master key is too short", async () => {
     vi.stubEnv("MCP_TOKEN", "short");
     await expect(startSession("user", "ana@example.com")).rejects.toThrow(/MCP_TOKEN/);
+  });
+});
+
+describe("the session's workspace", () => {
+  it("is the one the account signed in to, while they are a member of it", async () => {
+    members.add("ana@example.com w_secondone");
+    await startSession("user", "ana@example.com", undefined, "w_secondone");
+    expect(await isAuthed(request())).toBe(true);
+    expect(await sessionWorkspace()).toBe("w_secondone");
+  });
+
+  it("stops working when the person is taken out of that workspace", async () => {
+    await startSession("user", "ana@example.com");
+    expect(await isAuthed(request())).toBe(true);
+    members.delete("ana@example.com w_founding");
+    expect(await isAuthed(request())).toBe(false);
+    expect(await sessionWorkspace()).toBeNull();
+  });
+
+  it("can't be a workspace the person was never in", async () => {
+    await startSession("user", "ana@example.com", undefined, "w_someoneelse");
+    expect(await isAuthed(request())).toBe(false);
+  });
+
+  it("means the first workspace for a ticket from before workspaces", async () => {
+    const now = Date.now();
+    const body = Buffer.from(
+      JSON.stringify({ k: "user", sub: "ana@example.com", iat: now, exp: now + 86_400_000 }),
+    ).toString("base64url");
+    const { createHmac } = await import("node:crypto");
+    const sig = createHmac("sha256", TOKEN).update(`voicebox-session-v2:${body}`).digest("base64url");
+    jar.set(COOKIE, `${body}.${sig}`);
+    expect(await sessionWorkspace()).toBe("w_founding");
+  });
+
+  it("is none for the master key and GitHub sign-ins, which have no person", async () => {
+    await startSession("token", "token");
+    expect(await sessionWorkspace()).toBeNull();
   });
 });
 

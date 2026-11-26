@@ -2,7 +2,10 @@
 // Neon's HTTP driver to the pooled endpoint, which suits short requests on the Worker. lib/data.ts reads and writes
 // through here (listRows … deleteRow), and the browser's live board is a sealed Realtime query (liveQuery).
 // (Appwrite held these until 2026-10-31: docs/MIGRATION.md.)
+// Every row belongs to one workspace: each read, write and live query here is scoped to lib/tenant.ts's answer, so no
+// caller can reach another workspace's rows, whatever id it sends (docs/town/prd/foundation-workspaces-accounts.md).
 import { neon } from "@neondatabase/serverless";
+import { setResolvers, workspaceId } from "./tenant";
 import { fromPg } from "./workspace";
 
 /** A refusal with an HTTP status (a missing row is 404, a bad query 400). */
@@ -13,17 +16,30 @@ export class DataError extends Error {
 const URL_ = () => process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL || "";
 export const hasDb = () => !!URL_();
 
-let client: ReturnType<typeof neon> | null = null;
-export function sql() {
+/** What this file needs from a Postgres client: a query with $1… values, answered with rows. */
+export type SqlClient = { query: (text: string, values?: unknown[]) => Promise<unknown> };
+let client: SqlClient | null = null;
+export function sql(): SqlClient {
+  if (client) return client;
   if (!hasDb()) throw new Error("The database is not configured (DATABASE_URL_POOLED).");
-  return (client ??= neon(URL_()));
+  return (client = neon(URL_()) as unknown as SqlClient);
 }
+/** Tests: talk to a local Postgres instead of Neon. */
+export function useClient(c: SqlClient | null) {
+  client = c;
+  schema = null;
+}
+
+setResolvers({
+  session: async () => (await import("./session")).sessionWorkspace(),
+  workspaceCount: async () => Number(((await sql().query("select count(*)::int n from workspaces")) as { n: number }[])[0]?.n ?? 0),
+});
 
 let schema: Promise<void> | null = null;
 /** A fresh studio makes its own tables (db/*.sql via lib/schema.ts, all IF NOT EXISTS), once per server instance, so
  *  one-click deploys need no terminal step. Called where a new studio is first used: sign-in, the workspace API, MCP. */
 export function ensureSchema() {
-  if (!hasDb()) return Promise.resolve();
+  if (!hasDb() && !client) return Promise.resolve();
   return (schema ??= (async () => {
     const { SCHEMA } = await import("./schema");
     const q = sql();
@@ -47,7 +63,7 @@ const ARRAYS = new Set(["platforms", "jobs"]);
  *  allowed columns only. What the studio asks for: equal, the four comparisons, isNull/isNotNull, order and limit. */
 export type Q = { method: string; attribute?: string; values?: unknown[] };
 const OPS: Record<string, string> = { greaterThan: ">", greaterThanEqual: ">=", lessThan: "<", lessThanEqual: "<=", notEqual: "<>" };
-export function toSql(table: Table, queries: Q[], maxLimit = 1000) {
+export function toSql(table: Table, queries: Q[], workspace: string, maxLimit = 1000) {
   const col = (a = "") => {
     const c = a === "$id" ? "id" : a === "$createdAt" ? "created_at" : a === "$updatedAt" ? "updated_at" : a;
     if (c === "id" || c === "created_at" || c === "updated_at" || (TABLES[table] as readonly string[]).includes(c)) return c;
@@ -56,6 +72,7 @@ export function toSql(table: Table, queries: Q[], maxLimit = 1000) {
   const where: string[] = [], order: string[] = [], values: unknown[] = [];
   let limit = 25;
   const at = (v: unknown) => { values.push(v); return `$${values.length}`; };
+  where.push(`workspace_id = ${at(workspace)}`); // always first, never optional
   for (const x of queries) {
     const v = x.values ?? [];
     if (x.method === "equal") where.push(v.length ? `${col(x.attribute)} in (${v.map(at).join(", ")})` : "false");
@@ -79,33 +96,34 @@ const pick = (table: Table, data: Record<string, unknown>) => {
 export const newId = () => Date.now().toString(16).padStart(12, "0").slice(-12) + [...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 export async function listRows<T>(table: Table, queries: Q[]) {
-  const { text, values } = toSql(table, queries);
+  const { text, values } = toSql(table, queries, await workspaceId());
   return shaped<T>(table, await sql().query(text, values));
 }
 
+// by id: always "and workspace_id = …", so another workspace's id reads as missing (404), never as its row
 export async function getRow<T>(table: Table, id: string) {
-  const [row] = shaped<T>(table, await sql().query(`select * from ${table} where id = $1`, [id]));
+  const [row] = shaped<T>(table, await sql().query(`select * from ${table} where id = $1 and workspace_id = $2`, [id, await workspaceId()]));
   if (!row) throw new DataError("Row with the requested ID could not be found.", 404, "row_not_found");
   return row;
 }
 
 export async function insertRow<T>(table: Table, data: Record<string, unknown>, id = newId()) {
   const d = pick(table, data);
-  const cols = ["id", ...Object.keys(d)];
-  const [row] = shaped<T & { $id: string }>(table, await sql().query(`insert into ${table} (${cols.join(", ")}) values (${cols.map((_, i) => `$${i + 1}`).join(", ")}) returning *`, [id, ...Object.values(d)]));
+  const cols = ["id", "workspace_id", ...Object.keys(d)];
+  const [row] = shaped<T & { $id: string }>(table, await sql().query(`insert into ${table} (${cols.join(", ")}) values (${cols.map((_, i) => `$${i + 1}`).join(", ")}) returning *`, [id, await workspaceId(), ...Object.values(d)]));
   return row as T;
 }
 
 export async function patchRow<T>(table: Table, id: string, data: Record<string, unknown>) {
   const d = pick(table, data);
-  const sets = Object.keys(d).map((c, i) => `${c} = $${i + 2}`);
-  const [row] = shaped<T>(table, await sql().query(`update ${table} set ${[...sets, "updated_at = now()"].join(", ")} where id = $1 returning *`, [id, ...Object.values(d)]));
+  const sets = Object.keys(d).map((c, i) => `${c} = $${i + 3}`);
+  const [row] = shaped<T>(table, await sql().query(`update ${table} set ${[...sets, "updated_at = now()"].join(", ")} where id = $1 and workspace_id = $2 returning *`, [id, await workspaceId(), ...Object.values(d)]));
   if (!row) throw new DataError("Row with the requested ID could not be found.", 404, "row_not_found");
   return row;
 }
 
 export async function deleteRow(table: Table, id: string) {
-  await sql().query(`delete from ${table} where id = $1`, [id]);
+  await sql().query(`delete from ${table} where id = $1 and workspace_id = $2`, [id, await workspaceId()]);
 }
 
 /** A live query for the browser (Neon Realtime): sealed here, so the browser can watch exactly these rows and nothing
@@ -114,7 +132,7 @@ export async function liveQuery(table: Table, queries: Q[]) {
   const secret = process.env.NEON_REALTIME_SECRET, url = process.env.NEON_REALTIME_URL;
   if (!secret || !url) return null;
   const { createRealtime, rawSql } = await import("@neon/realtime/server");
-  const { text, values } = toSql(table, queries);
+  const { text, values } = toSql(table, queries, await workspaceId());
   const query = await createRealtime({ secret, db: process.env.NEON_DB_NAME || "neondb" }).seal({ query: rawSql(text, values as never) });
   return { url, query };
 }

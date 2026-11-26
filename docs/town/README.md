@@ -33,7 +33,11 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
 - **Staging is in the repo** (2026-11-26): a second Worker with its own bucket, database and test accounts; every
   merge to main is tested there signed in before production ([ADR 0004](../adr/0004-staging.md)). It goes live with
   the owner's one-time setup.
-- **Next:** the owner's setup of staging, then retesting live updates on it (see
+- **Workspaces, slice 1 is in** (2026-11-26): every post, comment, activity and file row belongs to a workspace, one
+  place decides which, and tests on a real Postgres prove one workspace can't reach another's rows
+  ([prd/foundation-workspaces-accounts.md](prd/foundation-workspaces-accounts.md)).
+- **Next:** workspaces slice 2 (stored files, settings, background work), then accounts (slice 3); the owner's setup of
+  staging and retesting live updates run alongside (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.

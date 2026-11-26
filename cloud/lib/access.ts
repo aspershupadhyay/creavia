@@ -20,7 +20,9 @@ export async function allowedEmails(fresh = false) {
   const { getSettings } = await import("./settings");
   const [extra, members] = await Promise.all([
     getSettings().then((s) => s.workspace_emails).catch(() => [] as string[]),
-    import("./data").then(async (a) => (await a.listMembers()).map((m) => m.email.toLowerCase())).catch(() => null),
+    // the studio's team as a whole (users.member), not one workspace's: this is the sign-in list, checked before any
+    // workspace is known
+    import("./users").then(async (u) => (await u.listUsers()).map((m) => m.email.toLowerCase())).catch(() => null),
   ]);
   if (members === null) { // the database unreachable: keep the last known list, else refuse (never fall open)
     if (cache) return cache.emails;

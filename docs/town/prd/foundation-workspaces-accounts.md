@@ -1,0 +1,82 @@
+# PRD · Workspaces and accounts (Phase 0)
+
+**Status:** slice 1 done (2026-11-26), slice 2 next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+"Workspaces" and "Accounts"
+
+## 1. Problem
+
+The cloud is one studio for one team: every row, file and setting belongs to "the" studio, and who may sign in is one
+list. Creavia is a service for many creators and teams, so each team needs its own workspace that no other can see,
+and people need to sign up, invite teammates and belong to more than one workspace.
+
+## 2. Who
+
+A creator (or a small team: creator, editor, manager) who signs up, invites the others, and works in one workspace;
+an editor who works for two creators and switches between their workspaces.
+
+## 3. Goals and non-goals
+
+- **Goals:** a workspace on every row and every stored file; one place that sets it per request, failing closed; roles
+  owner and member; sign-up, invites, password reset, Google sign-in; the existing studio's data becomes the first
+  workspace, untouched.
+- **Non-goals (now):** billing and plans, custom roles, SSO beyond Google, moving a workspace between accounts.
+
+## 4. Stories and acceptance
+
+1. **As anyone, I can't see another workspace.** Done when the isolation tests that try every route, MCP tool and file
+   link with another workspace's ids all fail closed (404, never the row), and a read with no workspace set throws.
+2. **As a new person, I can sign up and get my own workspace,** where I'm the owner. Done when sign-up with email and
+   password (or Google) lands me in an empty workspace of my own. On a self-hosted studio sign-up stays invite-only.
+3. **As an owner, I can invite a teammate** by email; the link works once, for that email, for 7 days. Done when the
+   invitee signs up or signs in through it and sees the same workspace and nothing else.
+4. **As a member of two workspaces, I can switch** between them; each request works in exactly one.
+5. **As an owner, I can remove someone;** they lose access within a minute, like today.
+6. **As anyone, I can reset a forgotten password** by email (a one-time link, 1 hour).
+7. **As the studio that exists today,** everything keeps working: its posts, files, voices and connections are the
+   first workspace, its people its members, the oldest its owner.
+
+## 5. Objects
+
+- `workspaces` (id, name, key prefix for stored files), `memberships` (workspace, person, role), `invites` (workspace,
+  email, role, hashed token, expiry). People (`users`) stay global: one person, many workspaces.
+- Every workspace table gets `workspace_id`, with no default (a write that forgets it fails instead of landing in the
+  wrong workspace). Stored files: keys under `w/<id>/`; the first workspace keeps its existing keys (prefix ""), so no
+  file is copied or moved. No key written today starts with `w/`, so the two can't collide (a test checks).
+- The session ticket names the workspace; each request checks the person is still a member of it (cached a minute).
+- Background work (cron, GPU callbacks, Instagram webhooks) runs inside an explicit workspace taken from the job or
+  the connected account, never from "the current one".
+
+## 6. Agent behaviour
+
+None yet; Vee and the crew act inside the workspace of the request that started them (tool registry, later).
+
+## 7. Edge cases and threat model
+
+| Case | Answer |
+| --- | --- |
+| Code reads with no workspace set | Throws; never a default workspace (tests) |
+| A request names another workspace's row id | Every query is `… and workspace_id = $w`: 404 |
+| A session for a workspace the person was removed from | Refused within a minute (membership check, like the list today) |
+| An old session ticket from before workspaces | Taken as the first workspace, only if the person is a member of it |
+| The master key (`MCP_TOKEN`) | The first workspace only; it is the self-hoster's key, not a key to every workspace |
+| An invite link forwarded to someone else | Works only for the invited email; one use; 7 days; stored hashed |
+| Sign-up spam on the hosted service | The existing lockout per address; email check before the workspace is used (with Accounts) |
+| A file key from another workspace in a request | Keys are built from the workspace's prefix on the server; a client-sent key outside it is refused |
+| A webhook or cron with no person | Runs in the workspace of the account or job it is for (explicit), or not at all |
+| Postgres bug in our filter | Row-level security as a second lock (slice 4) |
+
+## 8. Metrics
+
+Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test count (must only grow).
+
+## 9. Slices (each its own pull request)
+
+1. **Database workspaces:** the tables, `workspace_id` on posts, comments, activity and media with the first workspace
+   backfilled, one place that resolves the workspace (`lib/tenant.ts`), every query in `lib/db.ts` scoped, the session
+   naming its workspace, members per workspace, isolation tests against a real Postgres.
+2. **Stored files and background work:** key prefixes in `lib/store.ts`, settings and state files per workspace,
+   cron, GPU callbacks and Auto-DM inside explicit workspaces.
+3. **Accounts:** open sign-up (hosted only, `OPEN_SIGNUP`), invites, roles in the API, password reset (email port),
+   Google sign-in, the workspace switcher.
+4. **Second lock and the full sweep:** row-level security, and the isolation sweep over every route, MCP tool and file
+   link with another workspace's ids.

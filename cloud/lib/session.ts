@@ -5,8 +5,10 @@
 // The session cookie is a signed ticket: who, how, when it was issued and when it ends (14 days). It's checked on every
 // request: the signature, the expiry, "sign out everywhere" (anything issued before it is void), and that the person is
 // still on the list, so removing someone locks them out within a minute. Cookies hold HMACs, never the token itself.
+// An account's ticket also names its workspace (w), checked against its memberships on every request (lib/tenant.ts).
 import { createHmac } from "node:crypto";
 import { cookies } from "next/headers";
+import { FOUNDING, isWorkspaceId } from "./tenant";
 import { safeEqual } from "./worker";
 
 export const COOKIE = "vb_session";
@@ -21,17 +23,20 @@ export function tokenOk(token: string | null | undefined) {
 }
 
 export type Who = { id: string; name: string; email: string };
-type Ticket = { k: "user" | "github" | "token"; sub: string; iat: number; exp: number };
+/** w: the workspace an account works in; tickets from before workspaces have none and mean the first one. */
+type Ticket = { k: "user" | "github" | "token"; sub: string; iat: number; exp: number; w?: string };
 
 const b64 = (s: string) => Buffer.from(s).toString("base64url");
 const mac = (kind: string, body: string) => createHmac("sha256", secret()).update(`${kind}:${body}`).digest("base64url");
 export const KEEP = { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/", maxAge: 60 * 60 * 24 * SESSION_DAYS };
 
-/** Sign someone in: sets the session ticket (and, for an account, who they are). */
-export async function startSession(k: Ticket["k"], sub: string, who?: Who) {
+/** Sign someone in: sets the session ticket (and, for an account, who they are and which workspace they work in). */
+export async function startSession(k: Ticket["k"], sub: string, who?: Who, workspace = FOUNDING) {
   if (secret().length < 24) throw new Error("MCP_TOKEN is not set on the server (24+ characters).");
   const now = Date.now();
-  const body = b64(JSON.stringify({ k, sub: sub.toLowerCase(), iat: now, exp: now + SESSION_DAYS * 86_400_000 } satisfies Ticket));
+  const t: Ticket = { k, sub: sub.toLowerCase(), iat: now, exp: now + SESSION_DAYS * 86_400_000 };
+  if (k === "user") t.w = workspace;
+  const body = b64(JSON.stringify(t));
   const jar = await cookies();
   jar.set(COOKIE, `${body}.${mac("voicebox-session-v2", body)}`, KEEP);
   if (who) jar.set(USER_COOKIE, userValue(who), KEEP);
@@ -56,6 +61,11 @@ async function ticket(): Promise<Ticket | null> {
     const [epoch, list] = await Promise.all([sessionEpoch(), t.k === "user" ? allowedEmails().catch(() => null) : ([] as string[])]);
     if (t.iat < epoch) return null; // signed out everywhere since
     if (t.k === "user" && (!list || (list.length && !list.includes(t.sub)))) return null; // removed from the list
+    if (t.k === "user" && t.w !== undefined) {
+      // removed from that workspace (or a ticket naming something that isn't one)
+      const { isMember } = await import("./memberships");
+      if (!isWorkspaceId(t.w) || !(await isMember(t.sub, t.w))) return null;
+    }
     if (t.k === "github") {
       const { allowedLogins } = await import("./github");
       if (!(await allowedLogins()).map((l) => l.toLowerCase()).includes(t.sub)) return null;
@@ -83,6 +93,13 @@ export async function isAuthed(req?: Request) {
   if (bearer && tokenOk(bearer)) return true;
   if (req && !sameSite(req)) return false;
   return !!(await ticket());
+}
+
+/** The workspace the signed-in account works in, for lib/tenant.ts; null when no account is signed in (or outside a
+ *  request, where there are no cookies). */
+export async function sessionWorkspace(): Promise<string | null> {
+  const t = await ticket().catch(() => null);
+  return t?.k === "user" ? (t.w ?? FOUNDING) : null;
 }
 
 /** How the current browser is signed in, for Settings → Security. */
