@@ -63,6 +63,6 @@ export async function GET(req: Request) {
     return deny(land.error, land.status);
   }
   await startSession("user", user.email, { id: user.id, name: user.name, email: user.email }, land.workspace);
-  await noteAttempt(req, true, user.email, "google");
+  await noteAttempt(req, true, user.email, "google", land.workspace);
   return Response.redirect(new URL("/", origin(req)), 303);
 }

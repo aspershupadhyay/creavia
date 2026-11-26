@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** slices 1, 2, 3a and 3b part 1 done (2026-11-26); 3b part 2 (per-workspace sign-in log, sign-out and worker keys) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** slices 1 to 3 done (2026-11-26); slice 4 (row-level security and the full isolation sweep) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem
@@ -132,7 +132,15 @@ Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test 
      - *The studio's people before roles* (`db/007_founding_owners.sql`): everyone in the first workspace before roles
        began (2026-11-26) becomes an owner, once, so nobody loses managing people.
      - Links are stored only as hashes (`db/008_email_tokens.sql`). Tests: `test/accounts.test.ts`.
-   - **3b part 2:** the sign-in log and "sign out everywhere" per workspace (shared under `auth/` today), a worker key
-     per workspace so Colab, Kaggle and GPU deploys work in every one.
+   - **3b part 2, per workspace (done):**
+     - *The sign-in log and "sign out everywhere"* (`lib/access.ts`): each workspace has its own, under
+       `auth/ws/<id>/`; the first keeps `auth/log.json` and `auth/epoch.json`. A sign-in is logged where it landed, a
+       refused one in the first workspace's (the service's own). The first workspace's "sign out everywhere" also ends
+       the master key's and GitHub sign-ins.
+     - *A worker key per workspace* (`lib/gpus.ts workerSecret`): the first workspace's is `WORKER_SECRET`, as
+       always; any other gets its own (`vbwk_<workspace>~…`), made on first use and kept sealed. A GPU with it signs in
+       only to its own workspace. So Colab, on each workspace's own Google account, now works in every workspace.
+     - *Still the first workspace's only:* Kaggle and GPU deploys from GitHub run on the studio's own accounts
+       (`KAGGLE_USERNAME`, its repository), so another workspace would spend its hours; they say so plainly.
 4. **Second lock and the full sweep:** row-level security, and the isolation sweep over every route, MCP tool and file
    link with another workspace's ids.

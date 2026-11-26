@@ -54,7 +54,8 @@ tool registry, Home, and the slow outside approvals started.
         invites (hashed, 7 days, once, for one email), owner-only invites, removals and roles, switching workspace
   - [x] Slice 3b part 1: the email port, password reset, the email check for open sign-up, Google sign-in; the
         studio's people before roles became owners
-  - [ ] Slice 3b part 2: sign-in log and "sign out everywhere" per workspace, a worker key per workspace
+  - [x] Slice 3b part 2: sign-in log and "sign out everywhere" per workspace, a worker key per workspace (Colab in
+        every workspace; Kaggle and GitHub deploys stay the studio's own)
   - [ ] The screens for these (Creavia's own: sign-up, invite, team, switcher), with the Phase 0 UX
 - [ ] **The app connects by itself:** the service address built in; "Sign in" / "Create account"; self-hosting stays
       as an advanced option.

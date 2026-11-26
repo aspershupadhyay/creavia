@@ -214,9 +214,10 @@ async function assign(choices: Gpu[], highRam: boolean, deadline: number) {
 }
 
 /** Python the worker's kernel runs: the notebook's two start cells, with the secrets passed in (no Colab Secrets here). */
-function bootstrap(origin: string, prewarm: string, mode = "") {
+function bootstrap(origin: string, prewarm: string, mode = "", secret = "") {
   // VOICEBOX_MODE=fetch: a downloads-only worker on a CPU runtime (no engines fetched or checked, fetch jobs only)
-  const env = { WORKER_SECRET: process.env.WORKER_SECRET ?? "", REGISTER_URL: `${origin}/api/register`, PREWARM: mode ? "" : prewarm, VOICEBOX_STARTED_BY: "app", VOICEBOX_MODE: mode };
+  // WORKER_SECRET: this workspace's worker key (lib/gpus.ts workerSecret; the Worker's own in the first workspace)
+  const env = { WORKER_SECRET: secret, REGISTER_URL: `${origin}/api/register`, PREWARM: mode ? "" : prewarm, VOICEBOX_STARTED_BY: "app", VOICEBOX_MODE: mode };
   return [
     "import io, json, os, runpy, sys, tarfile, urllib.request",
     `os.environ.update(json.loads(${JSON.stringify(JSON.stringify(env))}))`,
@@ -340,7 +341,6 @@ export const appOrigin = (fallback?: string) =>
  *  purpose picks the GPU from settings (voice: voiceovers, an L4 by default; heavy: training and video, an A100); an
  *  explicit gpu wins over both. */
 export async function start(origin: string, gpu?: Gpu, opts: { purpose?: Purpose; high_ram?: boolean; for_downloads?: boolean; cpu?: boolean } = {}) {
-  await (await import("./tenant")).onlyFirstWorkspace("Colab GPUs");
   const t0 = Date.now(); // the whole start has to fit in the request's 300 s (maxDuration of the dash and MCP routes)
   const cfg = await getConfig();
   const want = gpu && GPUS.includes(gpu) ? gpu : opts.purpose === "voice" ? cfg.voice_gpu : opts.purpose === "heavy" ? cfg.heavy_gpu : cfg.gpu;
@@ -367,7 +367,7 @@ export async function start(origin: string, gpu?: Gpu, opts: { purpose?: Purpose
     high_ram: a.high_ram, purpose: opts.purpose ?? null, ...(opts.for_downloads ? { for_downloads: true } : {}) };
   await putJson(SESSION, s);
   try {
-    const r = await launch(a.runtimeProxyInfo, bootstrap(appOrigin(origin), process.env.COLAB_PREWARM ?? "", a.gpu === "CPU" ? "fetch" : ""), t0 + 270_000);
+    const r = await launch(a.runtimeProxyInfo, bootstrap(appOrigin(origin), process.env.COLAB_PREWARM ?? "", a.gpu === "CPU" ? "fetch" : "", (await (await import("./gpus")).workerSecret()) ?? ""), t0 + 270_000);
     const note = cpuNote ?? (highRam && !a.high_ram ? `${want} has no high-RAM machine on this account, so the standard one was started` : undefined);
     return { ...s, kernel: r.kernel, output: r.output, ...(note ? { note } : {}) };
   } catch (e) {

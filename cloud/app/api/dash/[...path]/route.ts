@@ -185,7 +185,7 @@ export async function GET(req: Request, ctx: Ctx) {
         on_vercel: env.includes(email), invited: s.workspace_emails.includes(email), member: members.some((m) => m.email.toLowerCase() === email), no_password: nopass.includes(email) }));
       const { allowedLogins } = await import("@/lib/github");
       return Response.json({ session: await sessionInfo(), me: (await currentUser())?.email ?? null, people, github: first ? await allowedLogins() : [],
-        log: first ? await acc.signInLog() : [], session_days: (await import("@/lib/session")).SESSION_DAYS });
+        log: await acc.signInLog(await workspaceId()), session_days: (await import("@/lib/session")).SESSION_DAYS });
     }
     if (a === "health" && !b) {
       // the Health page: what's working, what isn't (job notes in R2) + the worker's own state and self-check
@@ -698,8 +698,7 @@ export async function POST(req: Request, ctx: Ctx) {
     }
     if (a === "security") {
       const acc = await import("@/lib/access");
-      // owners only, and what is still the studio's as a whole ("sign out everywhere", its list) only in its first
-      // workspace until each workspace has its own (docs/town/prd/foundation-workspaces-accounts.md, 3b)
+      // owners only; the studio's own list only in its first workspace (any other workspace invites people instead)
       const owner = async (firstOnly: boolean) => {
         const [{ requireOwner }, { workspaceId, FOUNDING }] = await Promise.all([import("@/lib/memberships"), import("@/lib/tenant")]);
         try { await requireOwner(); } catch (e) { return Response.json({ error: (e as Error).message }, { status: 403 }); }
@@ -708,9 +707,9 @@ export async function POST(req: Request, ctx: Ctx) {
         return null;
       };
       if (b === "signout-all") {
-        const no = await owner(true);
+        const no = await owner(false);
         if (no) return no;
-        await acc.signOutEverywhere();
+        await acc.signOutEverywhere(await (await import("@/lib/tenant")).workspaceId()); // this workspace's people
         return Response.json({ ok: true });
       }
       if (b === "password") {

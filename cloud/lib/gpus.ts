@@ -262,18 +262,40 @@ export async function newModalKey(by: string) {
   keyCache.set(await workspaceId(), { at: Date.now(), v: key });
   return key;
 }
-/** The password the dashboard sends a GPU: the cloud key once one was made (Modal and Cerebrium share it; else
- *  WORKER_SECRET, for one set up by hand). */
+// The worker key: what a workspace's own GPUs (Colab, or one set up by hand) sign in with and are called with. The first
+// workspace's is WORKER_SECRET, as always; any other workspace gets its own (vbwk_<workspace>~…, lib/bound.ts), made
+// the first time it's needed and kept sealed like the Modal key (docs/town/prd/foundation-workspaces-accounts.md, 3b).
+const WORKER_KEYFILE = "voicebox/worker-key.json";
+const workerKeys = new Map<string, { at: number; v: string | null }>();
+/** This workspace's worker key: WORKER_SECRET in the first workspace; else its own, made now unless `make` is false. */
+export async function workerSecret(make = true): Promise<string | null> {
+  const { FOUNDING } = await import("./tenant");
+  const w = await workspaceId();
+  if (w === FOUNDING) return (process.env.WORKER_SECRET ?? "").length >= 24 ? (process.env.WORKER_SECRET as string) : null;
+  const hit = workerKeys.get(w);
+  if (hit && (hit.v || !make) && Date.now() - hit.at < 10_000) return hit.v;
+  const f = await getJson<{ enc: string }>(WORKER_KEYFILE).catch(() => null);
+  let v = f ? unseal(f.enc) : null;
+  if (!v && make) {
+    v = keyIn("vbwk_", w, randomBytes(30).toString("base64url"));
+    await putJson(WORKER_KEYFILE, { enc: seal(v), at: Date.now() });
+  }
+  workerKeys.set(w, { at: Date.now(), v });
+  return v;
+}
+
+/** The password the dashboard sends a GPU: the cloud key once one was made (Modal and Cerebrium share it; else the
+ *  workspace's worker key, for one set up by hand). */
 export async function authFor(b: Backend) {
-  return (isCloud(b) && (await modalKey())) || process.env.WORKER_SECRET || "";
+  return (isCloud(b) && (await modalKey())) || (await workerSecret()) || "";
 }
 
 /** Who a worker request comes from: Colab (or any worker) with WORKER_SECRET, Modal with its own key, or nobody. */
 export async function workerCaller(req: Request): Promise<"worker" | "modal" | null> {
   const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const secret = process.env.WORKER_SECRET ?? "";
   if (!token) return null;
-  if (secret.length >= 24 && eq(token, secret)) return "worker";
+  const secret = await workerSecret(false); // this workspace's (WORKER_SECRET in the first); never made by a caller
+  if (secret && eq(token, secret)) return "worker";
   const k = await modalKey();
   return k && eq(token, k) ? "modal" : null;
 }

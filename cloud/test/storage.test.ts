@@ -146,3 +146,54 @@ describe("working out the session's workspace", () => {
     // (the last test here: each test file gets its own modules, so no other file sees these resolvers)
   });
 });
+
+describe("worker keys per workspace (3b)", () => {
+  const worker = (t: string) =>
+    new Request("https://studio.example/api/register", { headers: { authorization: `Bearer ${t}` } });
+
+  it("the first workspace's is WORKER_SECRET; any other gets its own, named for it, made once", async () => {
+    vi.stubEnv("WORKER_SECRET", "the-studio-worker-secret-of-32-chars");
+    vi.stubEnv("MCP_TOKEN", "a-test-master-key-of-32-characters!");
+    const { workerSecret } = await import("@/lib/gpus");
+    expect(await asWorkspace(FOUNDING, () => workerSecret())).toBe("the-studio-worker-secret-of-32-chars");
+    expect(await asWorkspace(B, () => workerSecret(false))).toBeNull(); // a check never makes one
+    const a = await asWorkspace(A, () => workerSecret());
+    expect(a?.startsWith(`vbwk_${A}~`)).toBe(true);
+    expect(await asWorkspace(A, () => workerSecret())).toBe(a);
+    expect(JSON.stringify([...bucket.objects.values()].map((v) => new TextDecoder().decode(v)))).not.toContain(a); // sealed
+  });
+
+  it("a GPU signs in only to its own workspace with its key", async () => {
+    vi.stubEnv("WORKER_SECRET", "the-studio-worker-secret-of-32-chars");
+    vi.stubEnv("MCP_TOKEN", "a-test-master-key-of-32-characters!");
+    const { workerSecret, workerCaller } = await import("@/lib/gpus");
+    const { workerWorkspace } = await import("@/lib/bound");
+    const a = (await asWorkspace(A, () => workerSecret())) as string;
+    expect(workerWorkspace(worker(a))).toBe(A);
+    expect(await asWorkspace(A, () => workerCaller(worker(a)))).toBe("worker");
+    expect(await asWorkspace(B, () => workerCaller(worker(a)))).toBeNull();
+    expect(await asWorkspace(FOUNDING, () => workerCaller(worker(a)))).toBeNull();
+    // and the studio's WORKER_SECRET opens only the first workspace
+    expect(await asWorkspace(A, () => workerCaller(worker("the-studio-worker-secret-of-32-chars")))).toBeNull();
+    expect(await asWorkspace(FOUNDING, () => workerCaller(worker("the-studio-worker-secret-of-32-chars")))).toBe(
+      "worker",
+    );
+  });
+});
+
+describe("sign-in log and sign out everywhere per workspace (3b)", () => {
+  it("each workspace has its own, and the first keeps its old keys", async () => {
+    const acc = await import("@/lib/access");
+    const req = new Request("https://studio.example/api/login", { headers: { "x-forwarded-for": "10.1.2.3" } });
+    await acc.noteAttempt(req, true, "ana@example.com", "account");
+    await acc.noteAttempt(req, true, "bo@example.com", "account", A);
+    expect((await acc.signInLog()).map((e) => e.who)).toEqual(["ana@example.com"]);
+    expect((await acc.signInLog(A)).map((e) => e.who)).toEqual(["bo@example.com"]);
+    expect(await acc.signInLog(B)).toEqual([]);
+    await acc.signOutEverywhere(A);
+    expect(await acc.sessionEpoch(A)).toBeGreaterThan(0);
+    expect(await acc.sessionEpoch(B)).toBe(0);
+    expect(bucket.objects.has("auth/log.json")).toBe(true);
+    expect(bucket.objects.has(`auth/ws/${A}/epoch.json`)).toBe(true);
+  });
+});

@@ -131,6 +131,7 @@ runpy.run_path(HOME + "/app/launcher.py", run_name="__main__")
 
 /** Start the Kaggle notebook (a new run of it), unless it's on, booting, off in Settings or past the week's cap. */
 export async function startKaggle(origin: string, by = "the studio", force = false) {
+  // Kaggle signs in with the studio's own Kaggle account (KAGGLE_USERNAME on the Worker): its first workspace's only
   await (await import("./tenant")).onlyFirstWorkspace("Kaggle GPUs");
   if (!kaggleConfigured()) throw new Error("Kaggle isn't set up: add KAGGLE_USERNAME and KAGGLE_API_TOKEN on the Worker (Settings → GPU & engines → Kaggle).");
   const { getPrefs, gpuState } = await import("./gpus");

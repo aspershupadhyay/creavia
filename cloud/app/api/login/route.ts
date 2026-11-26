@@ -30,7 +30,7 @@ type Body = {
 
 const slow = () => new Promise((r) => setTimeout(r, 600)); // slow down guessing
 const locked = (s: number) => Response.json({ error: `Too many tries from here. Try again in ${Math.ceil(s / 60)} min.` }, { status: 429, headers: { "Retry-After": String(s) } });
-const note = (req: Request, ok: boolean, who: string, how: string) => after(() => noteAttempt(req, ok, who, how).catch(() => null));
+const note = (req: Request, ok: boolean, who: string, how: string, workspace?: string) => after(() => noteAttempt(req, ok, who, how, workspace).catch(() => null));
 const fail = (error: string, status: number, extra: object = {}) => Response.json({ error, ...extra }, { status });
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const LINK_GONE = "That link has expired or been used. Ask for a new one.";
@@ -46,7 +46,7 @@ async function signIn(req: Request, user: Account, invite: string | null, how: s
   }
   const who = { id: user.id, name: user.name, email: user.email };
   await startSession("user", user.email, who, land.workspace);
-  note(req, true, user.email, land.how === "account" ? how : `${how} (${land.how})`);
+  note(req, true, user.email, land.how === "account" ? how : `${how} (${land.how})`, land.workspace);
   return Response.json({ ok: true, user: who, workspace: true });
 }
 
