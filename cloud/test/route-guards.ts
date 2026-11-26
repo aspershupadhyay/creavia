@@ -55,7 +55,10 @@ export const ROUTES: Record<string, RouteGuard> = {
   "api/kaggle/boot/route.ts": { guard: "signed-link" },
   "api/login/route.ts": {
     guard: "sign-in",
-    open: { DELETE: "signing out: only clears this browser's own cookies" },
+    open: {
+      DELETE: "signing out: only clears this browser's own cookies",
+      GET: "an invite link's own token: says only which workspace and email it invites, while it still works",
+    },
   },
   "api/m/[sig]/[...key]/route.ts": { guard: "signed-link" },
   "api/mcp/route.ts": { guard: "mcp" },

@@ -49,7 +49,12 @@ tool registry, Home, and the slow outside approvals started.
         tracked links)
   - [ ] Slice 4: row-level security and the full isolation sweep (routes, MCP tools, file links)
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
-      Slice 3 of the same spec; needs slice 2 first (sign-up creates workspaces).
+      Slice 3 of the same spec.
+  - [x] Slice 3a (API): sign-up into a workspace of one's own with `OPEN_SIGNUP` (off: invite-only, as today),
+        invites (hashed, 7 days, once, for one email), owner-only invites, removals and roles, switching workspace
+  - [ ] Slice 3b: password reset (email port), Google sign-in, sign-in log and "sign out everywhere" per workspace,
+        a worker key per workspace
+  - [ ] The screens for these (Creavia's own: sign-up, invite, team, switcher), with the Phase 0 UX
 - [ ] **The app connects by itself:** the service address built in; "Sign in" / "Create account"; self-hosting stays
       as an advanced option.
 - [ ] **Tool registry:** every existing action as a named tool with a permission level (read / make / change / act),

@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** slices 1, 2a and 2b done (2026-11-26); slice 3 (accounts) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** slices 1, 2 and 3a done (2026-11-26); 3b (password reset, Google, per-workspace sign-in log, worker keys) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem
@@ -99,8 +99,26 @@ Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test 
      is stored. The webhook answers each account's entries inside its owner's workspace and leaves accounts nobody
      connected alone. Tracked links (`/l/…`) name their workspace under the signature (the first workspace's keep their
      old form) and count the open only there. Tests: `test/autodm-workspaces.test.ts`.
-3. **Accounts:** open sign-up (hosted only, `OPEN_SIGNUP`), invites, roles in the API, password reset (email port),
-   Google sign-in, the workspace switcher; the sign-in log and "sign out everywhere" per workspace (shared under
-   `auth/` today); a worker key per workspace, so Colab, Kaggle and GPU deploys work in every workspace.
+3. **Accounts**, in two pull requests:
+   - **3a, sign-up, invites, roles, switching (API, done):** tests in `test/accounts.test.ts` and `lib/session.test.ts`.
+     - *Sign-up:* an email on the studio's list joins the first workspace, as today. Anyone else gets a workspace of
+       their own, as its owner, only when `OPEN_SIGNUP=1` (the hosted service). Off, which is the default and every
+       self-hosted studio, sign-up stays invite-only. Accounts made this way are not on the studio's list
+       (`users.member` false), so they never see the first workspace.
+     - *Invites* (`lib/invites.ts`): an owner invites an email as owner or member. The link carries a random token,
+       stored only as its hash, valid 7 days, once, and only for that email. Accepting signs up or signs in and joins
+       that workspace; an invite into the first workspace also puts the person on the studio's list. No email is
+       sent yet: the owner gets the link to pass on (the email port comes with password reset, 3b).
+     - *Roles in the API:* only an owner invites, removes people, changes roles or the studio's list; the last owner
+       can't be removed or made a member. The master key and GitHub sign-ins are the first workspace's owners.
+     - *Switching:* a person lists their workspaces and switches; the new ticket names the workspace, checked as
+       before.
+     - *Sessions:* the studio's list still gates the first workspace. In any other workspace the membership (checked
+       every minute) is the gate. The master key, its sign-in and GitHub sign-ins always work in the first
+       workspace, so they keep working once a second workspace exists.
+     - *Not here:* screens (Creavia's own, Phase 0 UX), password reset, Google, per-workspace sign-in log and "sign
+       out everywhere", worker keys.
+   - **3b:** password reset (email port), Google sign-in, the sign-in log and "sign out everywhere" per workspace
+     (shared under `auth/` today), a worker key per workspace so Colab, Kaggle and GPU deploys work in every one.
 4. **Second lock and the full sweep:** row-level security, and the isolation sweep over every route, MCP tool and file
    link with another workspace's ids.

@@ -35,14 +35,15 @@ export async function verify(email: string, password: string): Promise<(User & {
   return (await matches(password, row.password_hash)) ? { id: row.id, email: row.email, name: row.name, member: row.member } : null;
 }
 
-/** A new account (the caller has checked the invite list). Throws 409 when the email has one already. */
-export async function createAccount(email: string, password: string, name: string): Promise<User> {
+/** A new account (the caller has checked the invite list). Throws 409 when the email has one already. member: on the
+ *  studio's sign-in list (an account with a workspace of its own, from open sign-up, is not). */
+export async function createAccount(email: string, password: string, name: string, member = true): Promise<User> {
   email = email.trim().toLowerCase();
   const taken = () => Object.assign(new Error("That email already has a seat. Sign in instead."), { status: 409 });
   if (await byEmail(email)) throw taken();
   const { newId } = await import("./db");
   const user = { id: newId(), email, name: name || email.split("@")[0] };
-  await sql().query("insert into users (id, email, name, password_hash) values ($1, $2, $3, $4)", [user.id, email, user.name, await hashPassword(password)]);
+  await sql().query("insert into users (id, email, name, password_hash, member) values ($1, $2, $3, $4, $5)", [user.id, email, user.name, await hashPassword(password), member]);
   return user;
 }
 

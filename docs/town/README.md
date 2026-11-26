@@ -43,7 +43,9 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
   each Instagram account belongs to one workspace, and its comments, DMs, inbox and link clicks stay there.
 - **UX direction set** (2026-11-26): handled the way Town handles its assistant, as Creavia's own
   ([stages/04-ux.md](stages/04-ux.md)).
-- **Next:** accounts (slice 3: sign-up, invites, roles, the switcher, a worker key per workspace); the owner's setup of
+- **Accounts begun** (slice 3a, 2026-11-26): with `OPEN_SIGNUP` on, anyone can sign up into a workspace of their own;
+  owners invite people by a one-time link, set roles and remove people; a person switches between workspaces. API only.
+- **Next:** slice 3b (password reset, Google sign-in, per-workspace sign-in log and worker keys); the owner's setup of
   staging and retesting live updates run alongside (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.

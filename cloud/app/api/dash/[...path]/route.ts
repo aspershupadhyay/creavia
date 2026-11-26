@@ -174,15 +174,18 @@ export async function GET(req: Request, ctx: Ctx) {
       // who can get in and from where, this browser's session, and the last sign-ins
       const acc = await import("@/lib/access");
       const s = await getSettings();
-      const env = (process.env.WORKSPACE_EMAILS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+      // the studio's list and sign-in log are the first workspace's: another workspace sees only its own people
+      const { workspaceId, FOUNDING } = await import("@/lib/tenant");
+      const first = (await workspaceId()) === FOUNDING;
+      const env = first ? (process.env.WORKSPACE_EMAILS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) : [];
       const [members, nopass] = await Promise.all([import("@/lib/data").then((m) => m.listMembers()).catch(() => []),
         import("@/lib/users").then((u) => u.withoutPassword()).catch(() => [] as string[])]);
       const emails = [...new Set([...env, ...s.workspace_emails, ...members.map((m) => m.email.toLowerCase())])];
       const people = emails.map((email) => ({ email, name: members.find((m) => m.email.toLowerCase() === email)?.name ?? null,
         on_vercel: env.includes(email), invited: s.workspace_emails.includes(email), member: members.some((m) => m.email.toLowerCase() === email), no_password: nopass.includes(email) }));
       const { allowedLogins } = await import("@/lib/github");
-      return Response.json({ session: await sessionInfo(), me: (await currentUser())?.email ?? null, people, github: await allowedLogins(),
-        log: await acc.signInLog(), session_days: (await import("@/lib/session")).SESSION_DAYS });
+      return Response.json({ session: await sessionInfo(), me: (await currentUser())?.email ?? null, people, github: first ? await allowedLogins() : [],
+        log: first ? await acc.signInLog() : [], session_days: (await import("@/lib/session")).SESSION_DAYS });
     }
     if (a === "health" && !b) {
       // the Health page: what's working, what isn't (job notes in R2) + the worker's own state and self-check
@@ -695,7 +698,21 @@ export async function POST(req: Request, ctx: Ctx) {
     }
     if (a === "security") {
       const acc = await import("@/lib/access");
-      if (b === "signout-all") { await acc.signOutEverywhere(); return Response.json({ ok: true }); }
+      // owners only, and what is still the studio's as a whole ("sign out everywhere", its list) only in its first
+      // workspace until each workspace has its own (docs/town/prd/foundation-workspaces-accounts.md, 3b)
+      const owner = async (firstOnly: boolean) => {
+        const [{ requireOwner }, { workspaceId, FOUNDING }] = await Promise.all([import("@/lib/memberships"), import("@/lib/tenant")]);
+        try { await requireOwner(); } catch (e) { return Response.json({ error: (e as Error).message }, { status: 403 }); }
+        if (firstOnly && (await workspaceId()) !== FOUNDING)
+          return Response.json({ error: "That is only in the studio's first workspace for now. Invite people to this one instead." }, { status: 403 });
+        return null;
+      };
+      if (b === "signout-all") {
+        const no = await owner(true);
+        if (no) return no;
+        await acc.signOutEverywhere();
+        return Response.json({ ok: true });
+      }
       if (b === "password") {
         // your own password (with the current one), or a teammate's that has none yet: signed-in people only
         const me = await currentUser();
@@ -705,14 +722,17 @@ export async function POST(req: Request, ctx: Ctx) {
       }
       const email = String(body.email ?? "").trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "a valid email, please" }, { status: 400 });
+      const no = await owner(b === "add");
+      if (no) return no;
       const s = await getSettings();
       if (b === "add") return Response.json(await updateSettings({ workspace_emails: [...s.workspace_emails, email] }).then(() => ({ ok: true })));
       if (b === "remove") {
         if (email === (await currentUser())?.email.toLowerCase()) return Response.json({ error: "you can't remove yourself" }, { status: 400 });
         if ((process.env.WORKSPACE_EMAILS ?? "").toLowerCase().split(",").map((x) => x.trim()).includes(email))
           return Response.json({ error: "this email is in WORKSPACE_EMAILS on the Worker: remove it there" }, { status: 400 });
+        try { await (await import("@/lib/data")).removeMember(email); }
+        catch (e) { return Response.json({ error: (e as Error).message }, { status: (e as { status?: number }).status ?? 502 }); }
         await updateSettings({ workspace_emails: s.workspace_emails.filter((x) => x !== email) });
-        await (await import("@/lib/data")).removeMember(email);
         await acc.allowedEmails(true);
         return Response.json({ ok: true });
       }

@@ -7,7 +7,7 @@
 // still on the list, so removing someone locks them out within a minute. Cookies hold HMACs, never the token itself.
 // An account's ticket also names its workspace (w), checked against its memberships on every request (lib/tenant.ts).
 import { createHmac } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { FOUNDING, isWorkspaceId } from "./tenant";
 import { safeEqual } from "./worker";
 
@@ -58,9 +58,12 @@ async function ticket(): Promise<Ticket | null> {
     if (!t.exp || t.exp < Date.now()) return null;
     const { allowedEmails, sessionEpoch } = await import("./access");
     // both at once: each is cached on the server, but a fresh instance fetches them
-    const [epoch, list] = await Promise.all([sessionEpoch(), t.k === "user" ? allowedEmails().catch(() => null) : ([] as string[])]);
+    // the studio's list gates the first workspace (tickets from before workspaces mean it); in any other workspace the
+    // membership below is the gate (docs/town/prd/foundation-workspaces-accounts.md, 3a)
+    const needsList = t.k === "user" && (t.w === undefined || t.w === FOUNDING);
+    const [epoch, list] = await Promise.all([sessionEpoch(), needsList ? allowedEmails().catch(() => null) : ([] as string[])]);
     if (t.iat < epoch) return null; // signed out everywhere since
-    if (t.k === "user" && (!list || (list.length && !list.includes(t.sub)))) return null; // removed from the list
+    if (needsList && (!list || (list.length && !list.includes(t.sub)))) return null; // removed from the list
     if (t.k === "user" && t.w !== undefined) {
       // removed from that workspace (or a ticket naming something that isn't one)
       const { isMember } = await import("./memberships");
@@ -98,6 +101,17 @@ export async function isAuthed(req?: Request) {
 /** The workspace the signed-in account works in, for lib/tenant.ts; null when no account is signed in (or outside a
  *  request, where there are no cookies). */
 export async function sessionWorkspace(): Promise<string | null> {
+  const t = await ticket().catch(() => null);
+  // the master key's sign-in and GitHub sign-ins are the self-hoster's, so the first workspace's, however many exist
+  if (t) return t.k === "user" ? (t.w ?? FOUNDING) : FOUNDING;
+  // a script with the master key (Bearer MCP_TOKEN) likewise
+  let bearer: string | undefined;
+  try { bearer = (await headers()).get("authorization")?.replace(/^Bearer\s+/i, ""); } catch { bearer = undefined; } // outside a request
+  return bearer && tokenOk(bearer) ? FOUNDING : null;
+}
+
+/** The workspace an account's ticket names, for the switcher: null for the master key and GitHub sign-ins. */
+export async function ticketWorkspace(): Promise<string | null> {
   const t = await ticket().catch(() => null);
   return t?.k === "user" ? (t.w ?? FOUNDING) : null;
 }
