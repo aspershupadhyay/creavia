@@ -43,8 +43,10 @@
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.20.15",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "pg": "^8.23.1",
     "typescript": "^5.9.3",
     "vitest": "3.2.7",
     "wrangler": "^4.156.0"
@@ -74,7 +76,7 @@
         "description": "24+ random characters, shared with your GPU workers (Colab, Kaggle, Modal, or the Creavia app's engine)."
       },
       "DATABASE_URL": {
-        "description": "Your Neon Postgres connection string (postgres://\u2026). Free at neon.tech."
+        "description": "Your Neon Postgres connection string (postgres://…). Free at neon.tech."
       }
     }
   }

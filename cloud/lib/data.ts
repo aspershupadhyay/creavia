@@ -19,13 +19,17 @@ export const remove = (table: Table, id: string) => deleteRow(table, id);
 
 // ── people
 
-/** The studio team (the users table, lib/users.ts). */
+/** The people in this workspace (lib/memberships.ts). */
 export async function listMembers(): Promise<Member[]> {
-  return (await import("./users")).listUsers();
+  const [{ workspaceMembers }, { workspaceId }] = await Promise.all([import("./memberships"), import("./tenant")]);
+  return (await workspaceMembers(await workspaceId())).map(({ id, name, email }) => ({ id, name, email }));
 }
 
-/** Take someone off the studio team (Settings → Security). Their next request is refused (lib/session.ts). */
+/** Take someone off the team (Settings → Security): out of this workspace, and off the studio's sign-in list. Their
+ *  next request is refused (lib/session.ts). */
 export async function removeMember(email: string) {
+  const [{ leaveWorkspace }, { workspaceId }] = await Promise.all([import("./memberships"), import("./tenant")]);
+  await leaveWorkspace(email, await workspaceId());
   return (await import("./users")).setMember(email, false);
 }
 

@@ -42,7 +42,8 @@ export type Member = { id: string; name: string; email: string };
  *  $id and the two times, times as ISO strings, a size as a number. */
 export function fromPg<T>(table: string, r: Record<string, unknown>): T {
   const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
-  const { id, created_at, updated_at, ...rest } = r;
+  // workspace_id stays on the server: callers are always in their own workspace (lib/db.ts)
+  const { id, created_at, updated_at, workspace_id: _workspace, ...rest } = r;
   for (const k of ["due_at", "posted_at"]) if (k in rest) rest[k] = iso(rest[k]);
   if (rest.size != null) rest.size = Number(rest.size);
   return { $id: String(id), $createdAt: iso(created_at), $updatedAt: iso(updated_at), $sequence: "", $tableId: table, $databaseId: "studio", $permissions: [], ...rest } as T;

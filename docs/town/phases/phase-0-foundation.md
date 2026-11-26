@@ -37,7 +37,15 @@ tool registry, Home, and the slow outside approvals started.
 - [ ] **Translation layer** for every user-facing string, English first.
 - [ ] **Workspaces:** a `workspace_id` on every row (posts, comments, files, voices, connections, settings, jobs) and
       every R2/B2 key prefix; one place that sets it per request; Postgres row-level security as a second lock.
+      Spec: [../prd/foundation-workspaces-accounts.md](../prd/foundation-workspaces-accounts.md) (four slices).
+  - [x] Slice 1, the database: `workspaces`, `memberships`, `invites`; `workspace_id` on posts, comments, activity and
+        media (today's studio backfilled as the first workspace); `lib/tenant.ts` decides the workspace, failing closed;
+        every query in `lib/db.ts` scoped; the session names its workspace; isolation tests on a real Postgres in CI
+  - [ ] Slice 2: stored-file prefixes, settings and state per workspace, cron, GPU callbacks and Auto-DM in explicit
+        workspaces
+  - [ ] Slice 4: row-level security and the full isolation sweep (routes, MCP tools, file links)
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
+      Slice 3 of the same spec; needs slice 2 first (sign-up creates workspaces).
 - [ ] **The app connects by itself:** the service address built in; "Sign in" / "Create account"; self-hosting stays
       as an advanced option.
 - [ ] **Tool registry:** every existing action as a named tool with a permission level (read / make / change / act),
