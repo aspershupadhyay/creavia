@@ -14,6 +14,9 @@ import { fileUrl, kindOf } from "./workspace";
 import { folderOrMake, moveItems, whereFiled } from "./files";
 import { getJson, headObj, presign, putJson, putObj, putStream } from "./store";
 import { safeEqual } from "./worker";
+import { workspaceId } from "./tenant";
+import { keyIn } from "./bound";
+import { bindTo, readBound, signedText } from "./bound";
 
 export const MAX_BYTES = 2e9;
 const TTL = 3600_000;
@@ -51,7 +54,9 @@ export async function startUpload(input: { name?: unknown; type?: unknown; size?
   const t: Ticket = { f: fileId, k: key, n: name, m: mime, p: input.post_id ? String(input.post_id).slice(0, 64) : null, d: folder, e: Date.now() + TTL,
     ...(carousel ? { c: carousel } : {}), ...(position ? { o: position } : {}), ...(size != null ? { s: size } : {}) };
   const body = Buffer.from(JSON.stringify(t)).toString("base64url");
-  const ticket = `${body}.${sign(body)}`;
+  // the ticket names its workspace, under its signature (lib/bound.ts): it only ever works there
+  const w = await workspaceId();
+  const ticket = bindTo(w, `${body}.${sign(signedText(w, body))}`);
   const upload_url = await presign(key, "PUT", TTL / 1000);
   // the same upload through our own domain (app/api/files/put): for clients that can't reach the R2 hostname
   const base = (await import("./colab")).appOrigin(origin) || "https://creavia.pages.dev";
@@ -59,9 +64,12 @@ export async function startUpload(input: { name?: unknown; type?: unknown; size?
   return { upload_url, put_url, ticket, expires_at: new Date(t.e).toISOString(), max_bytes: MAX_BYTES, put_max_bytes: PUT_MAX, content_type: mime, carousel: carousel ?? null, position: position ?? null };
 }
 
-function readTicket(ticket: string): Ticket {
-  const [body, mac] = String(ticket).split(".");
-  if (!body || !mac || !safeEqual(mac, sign(body))) throw new Error("that ticket isn't valid");
+async function readTicket(ticket: string): Promise<Ticket> {
+  const { workspace, rest } = readBound(String(ticket));
+  // a ticket of another workspace than this request's isn't valid here
+  if (workspace !== (await workspaceId())) throw new Error("that ticket isn't valid");
+  const [body, mac] = rest.split(".");
+  if (!body || !mac || !safeEqual(mac, sign(signedText(workspace, body)))) throw new Error("that ticket isn't valid");
   let t: Ticket;
   try { t = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Ticket; } catch { throw new Error("that ticket isn't valid"); }
   if (Date.now() > t.e + TTL) throw new Error("that ticket has expired; start the upload again");
@@ -76,7 +84,7 @@ type Receipt = { bytes: number; sha256: string; content_type: string; at: string
  *  the answer is a receipt with their size and SHA-256. A ticket takes one PUT, before it expires, of exactly the
  *  size it was started with (when one was given), and a type that matches its file's (or application/octet-stream). */
 export async function putUpload(ticket: string, req: Request) {
-  const t = readTicket(ticket);
+  const t = await readTicket(ticket);
   if (Date.now() > t.e) throw new UploadError(410, "this upload address has expired; start the upload again");
   const len = Number(req.headers.get("content-length") ?? NaN);
   if (!Number.isInteger(len) || len < 0) throw new UploadError(411, "send Content-Length (curl -T <file> or --data-binary @<file> do)");
@@ -139,7 +147,7 @@ export async function completeUploads(tickets: string[], actor: { id?: string; n
 }
 
 export async function completeUpload(ticket: string, actor: { id?: string; name: string }) {
-  const t = readTicket(ticket);
+  const t = await readTicket(ticket);
   const done = await getJson<Done>(DONE(t.f)).catch(() => null);
   if (done) {
     if (t.c && (!done.carousel || done.carousel.error)) {
@@ -185,7 +193,7 @@ export async function listKeys() {
 export async function createKey(name: string, by: string) {
   const all = (await getJson<Key[]>(KEYS).catch(() => null)) ?? [];
   if (all.length >= 10) throw new Error("Up to 10 upload keys; revoke one first.");
-  const key = `vbup_${randomBytes(24).toString("base64url")}`;
+  const key = keyIn("vbup_", await workspaceId(), randomBytes(24).toString("base64url")); // names its workspace (lib/bound.ts)
   const k: Key = { id: randomBytes(6).toString("hex"), name: name.trim().slice(0, 60) || "Upload key", hash: hash(key), at: Date.now(), by, used: null };
   await putJson(KEYS, [...all, k]);
   return { key, id: k.id, name: k.name };

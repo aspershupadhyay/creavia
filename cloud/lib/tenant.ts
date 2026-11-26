@@ -89,3 +89,15 @@ export function perWorkspace<T>() {
     },
   };
 }
+
+/** Things that still belong to the studio as a whole (a GPU that signs in with WORKER_SECRET): allowed only in the
+ *  first workspace until each workspace has its own worker key (PRD slice 3). Elsewhere it says so plainly. */
+export async function onlyFirstWorkspace(what: string) {
+  if ((await workspaceId()) !== FOUNDING)
+    throw Object.assign(
+      new Error(
+        `${what} are only available in the studio's first workspace for now. Use a cloud GPU (Modal or Cerebrium) with its own key.`,
+      ),
+      { status: 403 },
+    );
+}

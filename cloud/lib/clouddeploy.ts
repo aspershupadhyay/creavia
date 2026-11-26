@@ -68,6 +68,9 @@ export const listDeploys = async () => (await runs()).map(({ id, cloud, by, at, 
 
 /** Start a deploy: a one-time id, then the workflow, started with the studio's GitHub key. */
 export async function startDeploy(cloud: Cloud, by: string) {
+  // the deploy runs from this repository's own workflow with the studio's GitHub key: the self-hosted studio's tool,
+  // so the first workspace's until workspaces each get their own (lib/tenant.ts onlyFirstWorkspace)
+  await (await import("./tenant")).onlyFirstWorkspace("GPU deploys from GitHub");
   const st = await tokensStatus();
   if (!st[cloud].saved) throw new Error(`save ${cloud === "modal" ? "Modal" : "Cerebrium"}'s tokens first`);
   const gh = await (await import("./auto/secrets")).secret("github");
@@ -90,6 +93,10 @@ export async function startDeploy(cloud: Cloud, by: string) {
 
 /** The run turns its deploy id in (once, within 30 minutes): the tokens and the cloud key, for that one deploy. */
 export async function deployKeys(cloud: Cloud, id: string, origin: string) {
+  const { asWorkspace, FOUNDING } = await import("./tenant"); // deploys start only there (startDeploy)
+  return asWorkspace(FOUNDING, () => deployKeysHere(cloud, id, origin));
+}
+async function deployKeysHere(cloud: Cloud, id: string, origin: string) {
   const d = (await runs()).find((x) => x.id === id && x.cloud === cloud);
   if (!d || d.fetched || d.status !== "starting" || Date.now() - d.at > TTL) return null;
   const t = (await getJson<Tokens>(TOKENS).catch(() => null)) ?? {};
@@ -106,6 +113,10 @@ export async function deployKeys(cloud: Cloud, id: string, origin: string) {
 
 /** The run's report: how the deploy went. */
 export async function deployReport(id: string, body: { ok?: unknown; note?: unknown; url?: unknown; run_url?: unknown }) {
+  const { asWorkspace, FOUNDING } = await import("./tenant");
+  return asWorkspace(FOUNDING, () => deployReportHere(id, body));
+}
+async function deployReportHere(id: string, body: { ok?: unknown; note?: unknown; url?: unknown; run_url?: unknown }) {
   const d = (await runs()).find((x) => x.id === id);
   if (!d) return false;
   const s = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : null);

@@ -1,5 +1,7 @@
 // OAuth 2.1 for MCP clients that can't send a static header (claude.ai connectors, ChatGPT, ...).
 // Stateless: client ids, codes and tokens are HMAC-signed with MCP_TOKEN, so rotating MCP_TOKEN revokes all of them.
+// Codes and tokens name their workspace (claim w, under the signature; none means the first workspace, as every token
+// made before workspaces did), and the MCP runs in it (lib/bound.ts mcpWorkspace).
 import { createHash, createHmac } from "node:crypto";
 import { getPublicOrigin } from "mcp-handler";
 import { safeEqual } from "./worker";
@@ -58,17 +60,19 @@ export type Client = Claims & { typ: "client"; redirect_uris: string[]; name?: s
 export const issueClient = (redirect_uris: string[], name?: string) => sign({ typ: "client", redirect_uris, name, iat: now() });
 export const readClient = (id: string | null | undefined) => verify<Client>(id, "client");
 
-export type Code = Claims & { typ: "code"; cid: string; redirect_uri: string; challenge: string };
-export const issueCode = (client_id: string, redirect_uri: string, challenge: string) =>
-  sign({ typ: "code", cid: sha(client_id), redirect_uri, challenge, exp: now() + CODE_TTL });
+export type Code = Claims & { typ: "code"; cid: string; redirect_uri: string; challenge: string; w?: string };
+/** w: the workspace the person who approved the connection works in. */
+export const issueCode = (client_id: string, redirect_uri: string, challenge: string, w?: string) =>
+  sign({ typ: "code", cid: sha(client_id), redirect_uri, challenge, exp: now() + CODE_TTL, ...(w ? { w } : {}) });
 
-export function issueTokens(client_id: string) {
+export function issueTokens(client_id: string, w?: string) {
   const cid = sha(client_id);
+  const ws = w ? { w } : {};
   return {
-    access_token: sign({ typ: "access", cid, exp: now() + ACCESS_TTL }),
+    access_token: sign({ typ: "access", cid, exp: now() + ACCESS_TTL, ...ws }),
     token_type: "Bearer",
     expires_in: ACCESS_TTL,
-    refresh_token: sign({ typ: "refresh", cid, exp: now() + REFRESH_TTL }),
+    refresh_token: sign({ typ: "refresh", cid, exp: now() + REFRESH_TTL, ...ws }),
     scope: SCOPE,
   };
 }

@@ -167,7 +167,7 @@ export function registerAutoTools(server: ToolServer) {
         const inputs = await Promise.all((files ?? []).map((f) => b.inputFile(f)));
         const skillFiles = skills?.length ? await (await import("./memory")).skillCode(skills) : undefined;
         const job = await b.submit({ op: "run", code, lang, workspace, files: inputs, args, timeout_s: t, memory_mb, ...(skillFiles ? { skills: skillFiles } : {}), ...(tools?.length ? { tools } : {}),
-          ...(voicebox === false ? {} : { voicebox_url: `${origin}/api/mcp`, voicebox_key: b.runKey(model, t, (await import("./wrap")).roleOf(ctx as never)), voicebox_model: model }) },
+          ...(voicebox === false ? {} : { voicebox_url: `${origin}/api/mcp`, voicebox_key: await b.runKey(model, t, (await import("./wrap")).roleOf(ctx as never)), voicebox_model: model }) },
           { model, folder: save_to === undefined ? undefined : save_to });
         return text(await b.view(await b.wait(job.id, 45), { name: model }));
       } catch (e) { return fail(e); }
@@ -393,7 +393,7 @@ export function registerAutoTools(server: ToolServer) {
         if (project) { const p = await (await import("./projects")).usable(project, model); id = p.folder; name = p.path; proj = p.id; }
         else { name = folder ?? "Inbox"; id = await b.ensureFolder(name, { name: model }); }
         const origin = (await import("../colab")).appOrigin((ctx as Ctx)?.http?.req ? new URL((ctx as Ctx)!.http!.req!.url).origin : undefined);
-        const l = (await import("./uplinks")).makeLink({ folder: id, folderName: name, project: proj, by: model, hours, max }, origin);
+        const l = await (await import("./uplinks")).makeLink({ folder: id, folderName: name, project: proj, by: model, hours, max }, origin);
         return text({ ...l, next: `Give the user this link. Once they've sent the files: list_files folder "${name}".` });
       } catch (e) { return fail(e); }
     },

@@ -7,6 +7,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEq
 import { getJson, putJson } from "./store";
 import { loadWorker, saveWorker, STALE_MS, type Backend, type WorkerRecord } from "./registry";
 import { workspaceId } from "./tenant";
+import { keyIn } from "./bound";
 
 export type { Backend };
 export type Cloud = "modal" | "cerebrium";
@@ -256,7 +257,7 @@ export async function modalKey(): Promise<string | null> {
   return v;
 }
 export async function newModalKey(by: string) {
-  const key = `vbmd_${randomBytes(30).toString("base64url")}`;
+  const key = keyIn("vbmd_", await workspaceId(), randomBytes(30).toString("base64url")); // names its workspace (lib/bound.ts)
   await putJson(KEYFILE, { enc: seal(key), at: Date.now(), by });
   keyCache.set(await workspaceId(), { at: Date.now(), v: key });
   return key;

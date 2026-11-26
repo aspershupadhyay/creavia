@@ -6,12 +6,14 @@ import { randomBytes } from "node:crypto";
 import { sign, verify } from "../oauth";
 import { getJsonTagged, putJsonIf } from "../store";
 
-type Link = { typ: "upl"; id: string; f: string | null; p?: string; by: string; exp: number; max: number; name: string };
+type Link = { typ: "upl"; id: string; w?: string; f: string | null; p?: string; by: string; exp: number; max: number; name: string };
 const COUNT = (id: string) => `auto/uplinks/${id}.json`;
 
-export function makeLink(opts: { folder: string | null; folderName: string; project?: string; by: string; hours?: number; max?: number }, origin: string) {
+export async function makeLink(opts: { folder: string | null; folderName: string; project?: string; by: string; hours?: number; max?: number }, origin: string) {
   const hours = Math.max(1, Math.min(72, opts.hours ?? 24));
-  const l: Link = { typ: "upl", id: randomBytes(6).toString("hex"), f: opts.folder, ...(opts.project ? { p: opts.project } : {}), by: opts.by.slice(0, 60),
+  // w: the workspace whose folder it fills, under the signature (lib/bound.ts)
+  const w = await (await import("../tenant")).workspaceId();
+  const l: Link = { typ: "upl", id: randomBytes(6).toString("hex"), w, f: opts.folder, ...(opts.project ? { p: opts.project } : {}), by: opts.by.slice(0, 60),
     exp: Math.floor(Date.now() / 1000) + hours * 3600, max: Math.max(1, Math.min(100, opts.max ?? 30)), name: opts.folderName.slice(0, 120) };
   return { url: `${origin}/u/${sign(l)}`, expires_at: new Date(l.exp * 1000).toISOString(), max_files: l.max, folder: opts.folderName };
 }

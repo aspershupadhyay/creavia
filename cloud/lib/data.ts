@@ -5,6 +5,7 @@ import { POST_FIELDS, kindOf, type Comment, type Media, type Member, type Post }
 import { delObjs, presign, putObj, putStream } from "./store";
 import { adopt, assertRoom, fileSig, mediaKey } from "./r2files";
 import { DataError, deleteRow, getRow, hasDb, insertRow, listRows, patchRow, type Q, type Table } from "./db";
+import { workspaceId } from "./tenant";
 
 export { DataError, type Table };
 
@@ -117,7 +118,7 @@ export async function listMedia(postId?: string, limit = 100) {
 /** A file's row, with its token made if it somehow has none (a row written by hand). */
 export async function finalizeMedia(mediaId: string) {
   const m = await getMedia(mediaId);
-  const media = !m.token && m.r2_key ? await patch<Media>("media", mediaId, { token: fileSig(m.r2_key) }) : m;
+  const media = !m.token && m.r2_key ? await patch<Media>("media", mediaId, { token: fileSig(m.r2_key, await workspaceId()) }) : m;
   return { media, backup: undefined as string | undefined };
 }
 
@@ -193,7 +194,7 @@ export async function addMediaStream(body: ReadableStream<Uint8Array>, size: num
 async function mediaRow(fileId: string, name: string, mime: string, size: number, r2Key: string, opts: { postId?: string | null }, actor: { id?: string; name: string }) {
   const media = await insert<Media>("media", {
     file_id: fileId, name, mime, size, kind: kindOf(mime, name), post_id: opts.postId ?? null, uploaded_by: actor.id ?? null, uploaded_name: actor.name,
-    r2_key: r2Key, token: fileSig(r2Key),
+    r2_key: r2Key, token: fileSig(r2Key, await workspaceId()),
   });
   await logActivity({ post_id: opts.postId ?? null, verb: "uploaded", text: name }, actor);
   return { media, backup: undefined as string | undefined };

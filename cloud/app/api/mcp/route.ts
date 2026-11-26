@@ -5,6 +5,7 @@ import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { INSTRUCTIONS } from "@/lib/mcptools";
 import { buildServer } from "@/lib/auto/endpoint";
 import { verifyMcp, withKeyHeader } from "@/lib/auto/auth";
+import { mcpWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // starting a Colab GPU waits on the VM to boot (lib/colab.ts)
@@ -18,4 +19,6 @@ const inner = withKeyHeader(withMcpAuth(handler, verifyMcp, { required: true }))
 // a brand-new studio makes its tables before its first tool call (lib/db.ts ensureSchema)
 const authed = async (req: Request) => { await (await import("@/lib/db")).ensureSchema().catch(() => null); return inner(req); };
 
-export { authed as GET, authed as POST, authed as DELETE };
+// every call runs in the workspace the caller's key or token names (lib/bound.ts)
+const inWorkspace = scoped(mcpWorkspace, authed);
+export { inWorkspace as GET, inWorkspace as POST, inWorkspace as DELETE };

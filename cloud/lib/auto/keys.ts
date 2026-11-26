@@ -7,6 +7,8 @@ import { getJson } from "../store";
 import { safeEqual } from "../worker";
 import { mutate } from "./control";
 import { later } from "./wrap";
+import { workspaceId } from "../tenant";
+import { keyIn } from "../bound";
 
 const KEYS = "auto/model-keys.json";
 export const PREFIX = "vbmk_";
@@ -24,7 +26,8 @@ export async function createModelKey(name: string, role: string | undefined, by:
   if (!model) throw new Error("Name the model the key is for, e.g. gemini");
   const r = role?.trim().toLowerCase() || undefined;
   if (r && !(await (await import("./agents")).role(r))) throw new Error(`No role called ${r}`);
-  const key = `${PREFIX}${randomBytes(24).toString("base64url")}`;
+  // the key names its workspace (lib/bound.ts), and is only ever looked up in that workspace's key list
+  const key = keyIn(PREFIX, await workspaceId(), randomBytes(24).toString("base64url"));
   const k: Key = { id: randomBytes(6).toString("hex"), name: model, ...(r ? { role: r } : {}), hash: hash(key), at: Date.now(), by, used: null };
   await mutate<Key[]>(KEYS, [], (cur) => {
     if (cur.length >= 20) throw new Error("Up to 20 model keys; revoke one first.");

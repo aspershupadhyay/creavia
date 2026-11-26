@@ -5,11 +5,12 @@
 // it names one file (key, name, type, and its size when given), works once and expires in an hour, like upload_url
 // itself. It can only write that one file; nothing is read or listed. Answers a receipt: bytes and SHA-256.
 import { putUpload, UploadError } from "@/lib/inbox";
+import { linkWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function PUT(req: Request, { params }: { params: Promise<{ ticket: string }> }) {
+async function putHere(req: Request, { params }: { params: Promise<{ ticket: string }> }) {
   try {
     return Response.json(await putUpload(decodeURIComponent((await params).ticket), req));
   } catch (e) {
@@ -17,3 +18,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ ticket: 
     return Response.json({ error: (e as Error).message }, { status });
   }
 }
+
+// run in the workspace the ticket names, under its signature (lib/bound.ts)
+export const PUT = scoped(linkWorkspace(4), putHere);

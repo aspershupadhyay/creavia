@@ -10,7 +10,10 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   if (!(await (await import("@/lib/cronauth")).cronAuthed(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
-    return Response.json(await carryOn(50_000));
+    // each workspace's plans on their way out, in turn, sharing the 50 s (lib/workspaces.ts)
+    const { forEachWorkspace, oneOrAll } = await import("@/lib/workspaces");
+    const out = oneOrAll(await forEachWorkspace((ms) => carryOn(ms), 50_000));
+    return Response.json(out, { status: out && typeof out === "object" && "error" in out ? 502 : 200 });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 502 });
   }

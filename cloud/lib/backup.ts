@@ -89,15 +89,22 @@ export async function dumpDb(day: string) {
 /** Copy what's new or changed under models/ and datasets/ until `ms` runs out. */
 async function mirrorModels(ms: number) {
   const until = Date.now() + ms;
+  const { asWorkspace, keyPrefix } = await import("./tenant");
+  const { workspaceIds } = await import("./workspaces");
+  // every workspace's models, each copied under its own place (w/<id>/…, none for the first), read in its workspace
   const have = new Map((await Promise.all(MIRRORED.map(backupList))).flat().map((o) => [o.key, o.size]));
-  const all = (await Promise.all(MIRRORED.map(listObjs))).flat();
-  const want = all.filter((o) => have.get(o.key) !== o.size);
+  const all: { key: string; size: number; at: string; ws: string }[] = [];
+  for (const ws of await workspaceIds()) {
+    const found = (await asWorkspace(ws, () => Promise.all(MIRRORED.map(listObjs)))).flat();
+    all.push(...found.map((o) => ({ key: o.key, size: o.size, at: keyPrefix(ws) + o.key, ws })));
+  }
+  const want = all.filter((o) => have.get(o.at) !== o.size);
   const total = all.reduce((n, o) => n + o.size, 0);
   let copied = 0, bytes = 0;
   for (const o of want) {
     if (Date.now() > until) break;
-    const src = await presign(o.key, "GET", 3600);
-    await backupStream(o.key, o.size, async (start, end) => {
+    const src = await asWorkspace(o.ws, () => presign(o.key, "GET", 3600));
+    await backupStream(o.at, o.size, async (start, end) => {
       const r = await fetch(src, { headers: o.size ? { Range: `bytes=${start}-${end - 1}` } : {}, cache: "no-store" });
       if (!r.ok) throw new Error(`read ${o.key}: ${r.status}`);
       return new Uint8Array(await r.arrayBuffer());

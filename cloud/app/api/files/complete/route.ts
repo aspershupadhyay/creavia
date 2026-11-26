@@ -4,11 +4,12 @@
 // tried again. Same sign-ins as /api/files/upload.
 import { currentUser, isAuthed } from "@/lib/session";
 import { completeUpload, completeUploads, uploadKeyOk } from "@/lib/inbox";
+import { uploadKeyWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // a 2 GB video is copied 5 MB at a time
 
-export async function POST(req: Request) {
+async function postHere(req: Request) {
   const key = (await isAuthed(req)) ? null : await uploadKeyOk(req);
   if (!key && !(await isAuthed(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
@@ -21,3 +22,6 @@ export async function POST(req: Request) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const POST = scoped(uploadKeyWorkspace, postHere);

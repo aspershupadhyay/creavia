@@ -1,12 +1,13 @@
 // Heartbeat from a GPU worker (Colab; Kaggle with backend: "kaggle"; Modal / Cerebrium with their backend): POST {url, version, gpu, engines, loaded, queue, started_at, running, last_active}.
 import { after } from "next/server";
 import { saveWorker } from "@/lib/registry";
+import { workerWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // copying a finished download into Files runs after the reply
 const TUNNEL = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/;
 
-export async function POST(req: Request) {
+async function postHere(req: Request) {
   const who = await (await import("@/lib/gpus")).workerCaller(req);
   if (!who) return Response.json({ error: "unauthorized" }, { status: 401 });
 
@@ -76,3 +77,6 @@ export async function POST(req: Request) {
   await import("@/lib/downloads").then((d) => d.refresh((f) => after(f), { name: "Download" })).catch((e) => console.error("downloads", e));
   return Response.json({ ok: true });
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const POST = scoped(workerWorkspace, postHere);

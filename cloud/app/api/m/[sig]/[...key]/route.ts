@@ -6,13 +6,14 @@
 // through here instead (a Range passes through, so video seeks): B2 charges for what leaves it, except to Cloudflare.
 import { b2Get, b2Key, b2On, presign, presignR2 } from "@/lib/store";
 import { resizable, sigOk, thumb, type ThumbFormat } from "@/lib/r2files";
+import { linkWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ sig: string; key: string[] }> };
 const KEEP = "public, max-age=3600, s-maxage=3600";
 
-export async function GET(req: Request, ctx: Ctx) {
+async function getHere(req: Request, ctx: Ctx) {
   const { sig, key: parts } = await ctx.params;
   const key = parts.map(decodeURIComponent).join("/");
   if (!sigOk(key, sig)) return Response.json({ error: "not found" }, { status: 404 });
@@ -45,3 +46,6 @@ export async function GET(req: Request, ctx: Ctx) {
     return Response.json({ error: (e as Error).message }, { status: /not found/.test((e as Error).message) ? 404 : 502 });
   }
 }
+
+// run in the workspace the link names, under its signature (lib/bound.ts)
+export const GET = scoped(linkWorkspace(3), getHere);

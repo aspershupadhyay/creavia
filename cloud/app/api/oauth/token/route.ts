@@ -11,18 +11,21 @@ export async function POST(req: Request) {
   const client_id = p.client_id ?? "";
   if (!client_id) return oauthError("invalid_client", "client_id is required", 401);
 
+  let w: string | undefined; // the workspace the code or refresh token names, carried into the new tokens
   if (p.grant_type === "authorization_code") {
     const code = verify<Code>(p.code, "code");
+    w = code?.w;
     if (!code || code.cid !== sha(client_id)) return oauthError("invalid_grant", "code is invalid or expired");
     if (code.redirect_uri !== p.redirect_uri) return oauthError("invalid_grant", "redirect_uri mismatch");
     if (!pkceOk(p.code_verifier ?? "", code.challenge)) return oauthError("invalid_grant", "PKCE verification failed");
   } else if (p.grant_type === "refresh_token") {
-    const rt = verify<{ typ: "refresh"; cid: string }>(p.refresh_token, "refresh");
+    const rt = verify<{ typ: "refresh"; cid: string; w?: string }>(p.refresh_token, "refresh");
+    w = rt?.w;
     if (!rt || rt.cid !== sha(client_id)) return oauthError("invalid_grant", "refresh_token is invalid or expired");
   } else {
     return oauthError("unsupported_grant_type", "use authorization_code or refresh_token");
   }
-  return Response.json(issueTokens(client_id), { headers: { ...cors, "Cache-Control": "no-store", Pragma: "no-cache" } });
+  return Response.json(issueTokens(client_id, w), { headers: { ...cors, "Cache-Control": "no-store", Pragma: "no-cache" } });
 }
 
 export const OPTIONS = () => new Response(null, { status: 204, headers: cors });

@@ -7,10 +7,11 @@
 // carousels (/api/files/carousels).
 import { startUpload, startUploads, uploadKeyOk } from "@/lib/inbox";
 import { isAuthed } from "@/lib/session";
+import { uploadKeyWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+async function postHere(req: Request) {
   if (!(await isAuthed(req)) && !(await uploadKeyOk(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
     const body = await req.json().catch(() => ({}));
@@ -26,3 +27,6 @@ export async function POST(req: Request) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const POST = scoped(uploadKeyWorkspace, postHere);
