@@ -3,6 +3,7 @@
 // invite works once, for its email, in its workspace; only owners invite, remove or change roles, and a workspace keeps
 // an owner; switching works only into a workspace you're in. Its own Postgres schema, like autodm-workspaces.test.ts.
 import pg from "pg";
+import { pgClient } from "./pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // the browser's cookies, kept in memory, so a sign-in can be followed by requests that carry it
@@ -92,7 +93,7 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
     vi.stubEnv("MCP_TOKEN", "a-test-master-key-of-32-characters!");
     await q(`drop schema if exists ${SPACE} cascade`);
     await q(`create schema ${SPACE}`);
-    useClient({ query: q });
+    useClient(pgClient(pool));
     await ensureSchema();
     jar.clear();
     forget();
