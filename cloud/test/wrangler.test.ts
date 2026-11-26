@@ -29,6 +29,11 @@ describe("wrangler.jsonc", () => {
     expect(staging.vars?.SENTRY_ENVIRONMENT).toBe("staging");
   });
 
+  it("never switches open sign-up on from the config (lib/mailer.ts must be set up, and it's the owner's call)", () => {
+    expect(config.vars?.OPEN_SIGNUP).toBeUndefined();
+    expect(config.env.staging.vars?.OPEN_SIGNUP).toBeUndefined();
+  });
+
   it("never points either at the live VoiceBox", () => {
     expect(JSON.stringify(config)).not.toMatch(/voicebox/i);
   });

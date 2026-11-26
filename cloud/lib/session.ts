@@ -63,6 +63,8 @@ async function ticket(): Promise<Ticket | null> {
     const needsList = t.k === "user" && (t.w === undefined || t.w === FOUNDING);
     const [epoch, list] = await Promise.all([sessionEpoch(), needsList ? allowedEmails().catch(() => null) : ([] as string[])]);
     if (t.iat < epoch) return null; // signed out everywhere since
+    // a password reset since voids this person's older sign-ins (lib/users.ts; no database, no resets)
+    if (t.k === "user" && t.iat < (await import("./users").then((u) => u.sessionsAfter(t.sub)).catch(() => 0))) return null;
     if (needsList && (!list || (list.length && !list.includes(t.sub)))) return null; // removed from the list
     if (t.k === "user" && t.w !== undefined) {
       // removed from that workspace (or a ticket naming something that isn't one)

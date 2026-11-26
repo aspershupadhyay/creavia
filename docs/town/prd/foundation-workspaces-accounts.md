@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** slices 1, 2 and 3a done (2026-11-26); 3b (password reset, Google, per-workspace sign-in log, worker keys) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** slices 1, 2, 3a and 3b part 1 done (2026-11-26); 3b part 2 (per-workspace sign-in log, sign-out and worker keys) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem
@@ -118,7 +118,21 @@ Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test 
        workspace, so they keep working once a second workspace exists.
      - *Not here:* screens (Creavia's own, Phase 0 UX), password reset, Google, per-workspace sign-in log and "sign
        out everywhere", worker keys.
-   - **3b:** password reset (email port), Google sign-in, the sign-in log and "sign out everywhere" per workspace
-     (shared under `auth/` today), a worker key per workspace so Colab, Kaggle and GPU deploys work in every one.
+   - **3b part 1, email and Google (done):**
+     - *One way in* (`lib/signin.ts`): the form, Google, invites and email links all land a person, and decide whether
+       a new account may be made, with the same rules.
+     - *The email port* (`lib/mailer.ts`): Resend, with `RESEND_API_KEY` and `MAIL_FROM`. Without them there is no
+       email: a reset can't be asked for, and open sign-up is refused even with `OPEN_SIGNUP=1`.
+     - *Open sign-up checks the email:* the account and its workspace are made, but it can't sign in until the emailed
+       link (a day, once) is opened; a fresh link can be asked for.
+     - *Password reset:* a link by email (an hour, once); asking says the same whether or not the email has an account
+       and counts toward the lockout. The new password ends the person's older sign-ins (`users.sessions_after`).
+     - *Google sign-in* (`lib/google.ts`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`): only an email Google has verified;
+       that counts as the email check. Invites work through it.
+     - *The studio's people before roles* (`db/007_founding_owners.sql`): everyone in the first workspace before roles
+       began (2026-11-26) becomes an owner, once, so nobody loses managing people.
+     - Links are stored only as hashes (`db/008_email_tokens.sql`). Tests: `test/accounts.test.ts`.
+   - **3b part 2:** the sign-in log and "sign out everywhere" per workspace (shared under `auth/` today), a worker key
+     per workspace so Colab, Kaggle and GPU deploys work in every one.
 4. **Second lock and the full sweep:** row-level security, and the isolation sweep over every route, MCP tool and file
    link with another workspace's ids.
