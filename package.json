@@ -16,7 +16,8 @@
     "test:engine": "python3 -m pytest engine",
     "e2e": "npm run build -w desktop && npm run build -w cloud && playwright test",
     "lint": "biome ci . && (cd engine && ruff check . && ruff format --check .) && cd desktop/src-tauri && cargo fmt --check && cargo clippy --lib --bins --tests -- -D warnings",
-    "format": "biome check --write . && (cd engine && ruff format .) && cd desktop/src-tauri && cargo fmt"
+    "format": "biome check --write . && (cd engine && ruff format .) && cd desktop/src-tauri && cargo fmt",
+    "e2e:staging": "playwright test -c playwright.staging.config.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",

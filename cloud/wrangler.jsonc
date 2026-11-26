@@ -14,5 +14,16 @@
   // the studio's bucket, reached from inside Cloudflare (lib/store.ts); presigned links still use the S3 API
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "creavia" }],
   "limits": { "cpu_ms": 300000 },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "env": {
+    // the staging copy (docs/adr/0004-staging.md): its own Worker, bucket and database branch, with test accounts, so
+    // tests and releases are tried there before production. Deploy: `npm run setup -- --staging` (cloud/), or the
+    // Cloud workflow on main. Bindings and variables are not inherited, so each one is repeated here.
+    "staging": {
+      "name": "creavia-cloud-staging",
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "creavia-staging" }],
+      // R2_BUCKET: presigned links name this bucket too (lib/store.ts); SENTRY_ENVIRONMENT tags its errors
+      "vars": { "R2_BUCKET": "creavia-staging", "SENTRY_ENVIRONMENT": "staging" }
+    }
+  }
 }

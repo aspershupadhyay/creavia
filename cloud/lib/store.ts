@@ -20,9 +20,15 @@ type R2Bucket = {
   delete(keys: string | string[]): Promise<void>;
   list(o: { prefix?: string; cursor?: string; delimiter?: string; limit?: number }): Promise<{ objects: R2Obj[]; truncated: boolean; cursor?: string; delimitedPrefixes: string[] }>;
 };
+/** The buckets wrangler.jsonc binds as BUCKET: production's, and the staging copy's (its env.staging). */
+const BOUND_BUCKETS = ["creavia", "creavia-staging"];
+/** Whether reads and writes may use the R2 binding: only when R2_BUCKET names a bucket wrangler.jsonc binds (else the
+ *  binding would be a different bucket from the one presigned links point at) and no other S3 store is set. */
+export const usesBinding = (bucket: string | undefined, endpoint: string | undefined) =>
+  BOUND_BUCKETS.includes(bucket || "creavia") && !endpoint;
 /** The Worker's R2 binding, or null off Cloudflare (next dev, scripts) or when the bucket names don't match. */
 function bound(): R2Bucket | null {
-  if ((process.env.R2_BUCKET || "creavia") !== "creavia" || process.env.R2_ENDPOINT) return null;
+  if (!usesBinding(process.env.R2_BUCKET, process.env.R2_ENDPOINT)) return null;
   const ctx = (globalThis as Record<symbol, { env?: { BUCKET?: R2Bucket } } | undefined>)[Symbol.for("__cloudflare-context__")];
   return ctx?.env?.BUCKET ?? null;
 }

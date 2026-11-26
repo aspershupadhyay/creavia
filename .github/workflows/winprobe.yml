@@ -17,7 +17,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: desktop/src-tauri }
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Build the app
         working-directory: desktop
         run: npx tauri build --no-bundle

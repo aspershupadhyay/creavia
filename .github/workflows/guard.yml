@@ -32,4 +32,6 @@ jobs:
           fi
           grep -q '"name": "creavia-cloud"' cloud/wrangler.jsonc || { echo "cloud/wrangler.jsonc must deploy the creavia-cloud Worker"; exit 1; }
           grep -q '"bucket_name": "creavia"' cloud/wrangler.jsonc || { echo "cloud/wrangler.jsonc must use the creavia bucket"; exit 1; }
+          grep -q '"name": "creavia-cloud-staging"' cloud/wrangler.jsonc || { echo "cloud/wrangler.jsonc's staging must deploy the creavia-cloud-staging Worker"; exit 1; }
+          grep -q '"bucket_name": "creavia-staging"' cloud/wrangler.jsonc || { echo "cloud/wrangler.jsonc's staging must use the creavia-staging bucket"; exit 1; }
           echo "Creavia is separate from the live VoiceBox."
