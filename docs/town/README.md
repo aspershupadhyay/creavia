@@ -36,7 +36,9 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
 - **Workspaces, slice 1 is in** (2026-11-26): every post, comment, activity and file row belongs to a workspace, one
   place decides which, and tests on a real Postgres prove one workspace can't reach another's rows
   ([prd/foundation-workspaces-accounts.md](prd/foundation-workspaces-accounts.md)).
-- **Next:** workspaces slice 2 (stored files, settings, background work), then accounts (slice 3); the owner's setup of
+- **Stored files are per workspace too** (slice 2a, 2026-11-26): every settings, state and media file lives under its
+  workspace, and tests prove one workspace can't read, list or delete another's.
+- **Next:** workspaces slice 2b (background work in explicit workspaces), then accounts (slice 3); the owner's setup of
   staging and retesting live updates run alongside (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.

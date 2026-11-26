@@ -8,6 +8,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { loadWorker } from "./registry";
 import { delObjs, getJson, getObj, putJson, putObj } from "./store";
+import { workspaceId } from "./tenant";
 
 const COLAB = "https://colab.research.google.com";
 const REDIRECT = "https://sdk.cloud.google.com/applicationdefaultauthcode.html"; // registered to the CLI's client
@@ -79,13 +80,13 @@ export async function connect(code: string) {
     .then((x) => x.json()).catch(() => ({})) as { email?: string };
   await putObj(TOKEN, seal({ refresh_token: t.refresh_token, email: who.email ?? null, at: Date.now() }), "application/octet-stream");
   await delObjs([PENDING]);
-  cached = null;
+  cached.delete(await workspaceId());
   return { email: who.email ?? null };
 }
 
 export async function disconnect() {
   await delObjs([TOKEN]);
-  cached = null;
+  cached.delete(await workspaceId());
 }
 
 async function stored() {
@@ -94,17 +95,20 @@ async function stored() {
   return open<{ refresh_token: string; email: string | null; at: number }>(Buffer.from(await r.arrayBuffer()));
 }
 
-let cached: { token: string; until: number } | null = null;
+/** Each workspace's Google access token, while it lasts (each connects its own Colab). */
+const cached = new Map<string, { token: string; until: number }>();
 async function accessToken() {
-  if (cached && cached.until > Date.now() + 60_000) return cached.token;
+  const w = await workspaceId();
+  const hit = cached.get(w);
+  if (hit && hit.until > Date.now() + 60_000) return hit.token;
   const s = await stored();
   if (!s) throw new Error("Colab isn't connected: Health → GPU → Connect Colab");
   const r = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ refresh_token: s.refresh_token, client_id: client().id, client_secret: client().secret, grant_type: "refresh_token" }) });
   const t = await r.json() as { access_token?: string; expires_in?: number; error?: string };
   if (!r.ok || !t.access_token) throw new Error(t.error === "invalid_grant" ? "the Colab sign-in expired or was revoked: connect again" : `Google token refresh failed (${t.error ?? r.status})`);
-  cached = { token: t.access_token, until: Date.now() + (t.expires_in ?? 3600) * 1000 };
-  return cached.token;
+  cached.set(w, { token: t.access_token, until: Date.now() + (t.expires_in ?? 3600) * 1000 });
+  return t.access_token;
 }
 
 // ── the Colab backend ──────────────────────────────────────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ import { listPosts } from "./data";
 import { DAY, hashtagsOf, iso, median, msg, report, settle, sum, windows, type Bar, type Daily, type Kpi, type Range, type Win } from "./analytics-util";
 import { AGE, DEVICES, TRAFFIC, ytDeep, ytPost, type PostDetail, type YtDeep } from "./analytics-yt";
 import { igDeep, igPost, type IgDeep } from "./analytics-ig";
+import { workspaceId } from "./tenant";
 
 export { RANGES } from "./analytics-util";
 export type { Bar, Daily, Kpi, Range } from "./analytics-util";
@@ -754,17 +755,19 @@ const LOCK_MS = 4 * 60_000;
  *  BUILD_MS is never joined: on Workers a build handed to waitUntil is cancelled about 30 s after the response, and its
  *  promise never settles, so joining it would hang the request (that left the Analytics page on "Updating…" for good). */
 const BUILD_MS = 90_000;
-const building = new Map<Range, { p: Promise<Base>; at: number }>();
-const live = (range: Range) => { const b = building.get(range); return b && Date.now() - b.at < BUILD_MS ? b.p : null; };
-function rebuild(range: Range) {
-  let p = live(range);
+/** Builds running on this server, by workspace and range (one workspace never joins another's build). */
+const building = new Map<string, { p: Promise<Base>; at: number }>();
+const live = (slot: string) => { const b = building.get(slot); return b && Date.now() - b.at < BUILD_MS ? b.p : null; };
+async function rebuild(range: Range) {
+  const slot = `${await workspaceId()} ${range}`;
+  let p = live(slot);
   if (!p) {
     const mine: Promise<Base> = (async () => {
       const b = await gather(range);
       await putJson(KEY(range), b).catch(() => null);
       return b;
-    })().finally(() => { if (building.get(range)?.p === mine) building.delete(range); putJson(LOCK(range), { at: 0 }).catch(() => null); });
-    building.set(range, { p: mine, at: Date.now() });
+    })().finally(() => { if (building.get(slot)?.p === mine) building.delete(slot); putJson(LOCK(range), { at: 0 }).catch(() => null); });
+    building.set(slot, { p: mine, at: Date.now() });
     p = mine;
   }
   return p;
@@ -784,7 +787,7 @@ async function loadBase(range: Range, fresh: boolean, background?: ((p: Promise<
     if (kept && Date.now() - kept.at < FRESH_MS) return { base: kept, cached: true, stale: false };
     if (kept && background === null) return { base: kept, cached: true, stale: true };
     if (kept && background) {
-      if (!live(range)) {
+      if (!live(`${await workspaceId()} ${range}`)) {
         const lock = await getJson<{ at: number }>(LOCK(range)).catch(() => null);
         if (!lock || Date.now() - lock.at > LOCK_MS) {
           await putJson(LOCK(range), { at: Date.now() }).catch(() => null);

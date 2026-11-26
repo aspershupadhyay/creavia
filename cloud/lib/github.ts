@@ -10,8 +10,9 @@ export const owners = () =>
 
 /** Everyone allowed: OWNER_GITHUB and the people added in Settings. */
 export async function allowedLogins() {
-  const { getSettings } = await import("./settings");
-  const extra = await getSettings().then((s) => s.mcp_github).catch(() => [] as string[]);
+  const [{ getSettings }, { asWorkspace, FOUNDING }] = await Promise.all([import("./settings"), import("./tenant")]);
+  // the first workspace's settings, named: this runs while a session is being checked (lib/tenant.ts)
+  const extra = await asWorkspace(FOUNDING, getSettings).then((s) => s.mcp_github).catch(() => [] as string[]);
   return [...new Set([...owners(), ...extra])];
 }
 

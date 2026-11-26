@@ -10,7 +10,31 @@
 // binding (BUCKET in wrangler.jsonc: inside Cloudflare, no signing, no extra TLS hop, a few ms); anywhere else, and for
 // presigned links, conditional writes and copies, over the S3 API (signed with aws4fetch). R2 has no egress fees, so
 // audio/video play straight from presigned URLs.
+//
+// Workspaces (docs/town/prd/foundation-workspaces-accounts.md, slice 2): callers use the same keys as ever
+// ("workspace/files.json", "library/…"); here, where a key becomes a bucket address, it is put under its workspace's
+// prefix (lib/tenant.ts keyPrefix: none for the first workspace, w/<id>/ for the others), and lists hand keys back
+// without it. So no caller can name another workspace's file. A few keys are the service's own, shared by every
+// workspace (SHARED: sign-in lockouts, backups, GPU build caches).
 import { AwsClient } from "aws4fetch";
+import { keyPrefix, workspaceId } from "./tenant";
+
+/** Keys that belong to the service, not to a workspace. Everything else is a workspace's. */
+export const SHARED = ["auth/", "backups/", "cache/compile/", "cache/hf/", "cache/huggingface/", "cache/toolchain/"];
+const shared = (key: string) => SHARED.some((p) => key.startsWith(p));
+
+/** The prefix a key or list prefix goes under in the bucket, for the workspace this code is working in. */
+async function prefixOf(key: string) {
+  // a key spelled like another workspace's place is refused: in the first workspace (no prefix) it would be theirs
+  if (key.startsWith("w/")) throw Object.assign(new Error(`storage: "${key.slice(0, 40)}" is not a key a workspace can use`), { status: 400 });
+  return shared(key) ? "" : keyPrefix(await workspaceId());
+}
+/** A key's address in the bucket. */
+export const bucketKey = async (key: string) => (await prefixOf(key)) + key;
+/** Lists: the found keys without the workspace's prefix, as callers named them. The first workspace has no prefix, so
+ *  a list from the top of the bucket would also find the others' w/… files: those are left out. */
+const unprefixed = (pre: string, objs: StoredObj[]) =>
+  pre ? objs.map((o) => ({ ...o, key: o.key.slice(pre.length) })) : objs.filter((o) => !o.key.startsWith("w/"));
 
 type R2Obj = { size: number; etag: string; httpEtag: string; uploaded: Date; key: string; httpMetadata?: { contentType?: string } };
 type R2Body = R2Obj & { body: ReadableStream };
@@ -90,12 +114,13 @@ const b2url = (key: string) => `${B2_BASE()}/${enc(key)}`;
 
 /** B2 alone: the object (a Range header passes through), or null. */
 export async function b2Get(key: string, init: RequestInit = {}): Promise<Response | null> {
-  const r = await b2().fetch(b2url(key), { cache: "no-store", ...init });
+  const at = await bucketKey(key);
+  const r = await b2().fetch(b2url(at), { cache: "no-store", ...init });
   if (r.status === 404) return null;
   // B2 answers a HEAD for a file that isn't there with a bare 403 (a HEAD has no body to say why): ask with a one-byte
   // GET instead, which says NoSuchKey (not there: null) or gives the size (Content-Range), or the real reason
   if (r.status === 403 && init.method === "HEAD") {
-    const g = await b2().fetch(b2url(key), { cache: "no-store", headers: { Range: "bytes=0-0" } });
+    const g = await b2().fetch(b2url(at), { cache: "no-store", headers: { Range: "bytes=0-0" } });
     if (g.status === 404) return null;
     const body = g.ok ? "" : await g.text();
     if (/NoSuchKey|not\s*found|does not exist/i.test(body)) return null;
@@ -109,7 +134,7 @@ export async function b2Get(key: string, init: RequestInit = {}): Promise<Respon
 }
 /** Bytes into B2: a stream needs its size (sent as Content-Length through a FixedLengthStream on the Worker). */
 export async function putB2(key: string, body: Uint8Array | ReadableStream<Uint8Array>, type: string, size?: number) {
-  const signed = await b2().sign(b2url(key), { method: "PUT", headers: { "Content-Type": type, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
+  const signed = await b2().sign(b2url(await bucketKey(key)), { method: "PUT", headers: { "Content-Type": type, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
   let sent: BodyInit = body as BodyInit;
   if (body instanceof ReadableStream) {
     const FLS = (globalThis as { FixedLengthStream?: new (n: number) => TransformStream<Uint8Array, Uint8Array> }).FixedLengthStream;
@@ -144,8 +169,9 @@ const contents = (xml: string, out: StoredObj[]) => {
 /** Every object under a prefix on B2 alone. */
 export async function listB2(prefix: string): Promise<StoredObj[]> {
   const out: StoredObj[] = [];
-  await listXml(B2_BASE(), b2(), prefix, false, (x) => contents(x, out));
-  return out;
+  const pre = await prefixOf(prefix);
+  await listXml(B2_BASE(), b2(), pre + prefix, false, (x) => contents(x, out));
+  return unprefixed(pre, out);
 }
 /** Can the Worker reach B2 with its key? What Backblaze answers (never the key itself). */
 export async function b2Check() {
@@ -180,13 +206,14 @@ async function fromLegacy(key: string): Promise<Response | null> {
 }
 /** R2 alone. */
 export async function getR2(key: string): Promise<Response | null> {
+  const at = await bucketKey(key);
   const b = bound();
   if (b) {
-    const o = await b.get(key);
+    const o = await b.get(at);
     if (!o) return null;
     return new Response(o.body, { headers: { "content-type": o.httpMetadata?.contentType || typeOf(key), "content-length": String(o.size), etag: o.httpEtag } });
   }
-  const r = await aws().fetch(url(key), { cache: "no-store" });
+  const r = await aws().fetch(url(at), { cache: "no-store" });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`storage GET ${key}: ${r.status}`);
   return r;
@@ -198,15 +225,16 @@ export async function headObj(key: string): Promise<{ size: number; type: string
     const r = await b2Get(key, { method: "HEAD" });
     if (r) return { size: Number(r.headers.get("content-length") ?? 0), type: r.headers.get("content-type") ?? "" };
   }
+  const at = await bucketKey(key);
   const b = bound();
   if (b) {
-    const o = await b.head(key);
+    const o = await b.head(at);
     if (o) return { size: o.size, type: o.httpMetadata?.contentType ?? "" };
     if (!legacyKey(key)) return null;
     const l = await b2Get(key, { method: "HEAD" }).catch(() => null);
     return l ? { size: Number(l.headers.get("content-length") ?? 0), type: l.headers.get("content-type") ?? "" } : null;
   }
-  const r = await aws().fetch(url(key), { method: "HEAD", cache: "no-store" });
+  const r = await aws().fetch(url(at), { method: "HEAD", cache: "no-store" });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`storage HEAD ${key}: ${r.status}`);
   return { size: Number(r.headers.get("content-length") ?? 0), type: r.headers.get("content-type") ?? "" };
@@ -222,9 +250,10 @@ export async function putObj(key: string, body: BodyInit, type = typeOf(key)) {
   // Vercel, and R2 rejects that with 411 MissingContentLength.
   const bytes = new Uint8Array(await new Response(body).arrayBuffer());
   if (onB2(key)) return putB2(key, bytes, type);
+  const at = await bucketKey(key);
   const b = bound();
-  if (b) return void (await b.put(key, bytes, { httpMetadata: { contentType: type } }));
-  const signed = await aws().sign(url(key), { method: "PUT", headers: { "Content-Type": type, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
+  if (b) return void (await b.put(at, bytes, { httpMetadata: { contentType: type } }));
+  const signed = await aws().sign(url(at), { method: "PUT", headers: { "Content-Type": type, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
   const r = await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes });
   if (!r.ok) throw new Error(`storage PUT ${key}: ${r.status} ${(await r.text()).slice(0, 200)}`);
 }
@@ -243,7 +272,7 @@ export async function putStreamR2(key: string, body: ReadableStream<Uint8Array>,
   if (!b || !FLS || !(size > 0)) return false;
   const { readable, writable } = new FLS(size);
   const piping = body.pipeTo(writable);
-  await Promise.all([b.put(key, readable, { httpMetadata: { contentType: type } }), piping]);
+  await Promise.all([b.put(await bucketKey(key), readable, { httpMetadata: { contentType: type } }), piping]);
   return true;
 }
 
@@ -252,9 +281,10 @@ export const putJson = (key: string, value: unknown) => putObj(key, JSON.stringi
 /** A JSON object with its ETag, for a write that must not overwrite someone else's (putJsonIf). */
 export async function getJsonTagged<T>(key: string): Promise<{ value: T | null; etag: string | null }> {
   // uncompressed, or the tag comes back weak (W/"…", for the gzipped copy) and never matches on the write
-  let r = await aws().fetch(url(key), { cache: "no-store", headers: { "Accept-Encoding": "identity" } });
+  const at = await bucketKey(key);
+  let r = await aws().fetch(url(at), { cache: "no-store", headers: { "Accept-Encoding": "identity" } });
   // still on B2 from the first version: copy it to R2, then read it with R2's tag
-  if (r.status === 404 && legacyKey(key) && (await fromLegacy(key))) r = await aws().fetch(url(key), { cache: "no-store", headers: { "Accept-Encoding": "identity" } });
+  if (r.status === 404 && legacyKey(key) && (await fromLegacy(key))) r = await aws().fetch(url(at), { cache: "no-store", headers: { "Accept-Encoding": "identity" } });
   if (r.status === 404) return { value: null, etag: null };
   if (!r.ok) throw new Error(`storage GET ${key}: ${r.status}`);
   const etag = r.headers.get("etag")?.replace(/^W\//, "") ?? null;
@@ -266,7 +296,7 @@ export async function getJsonTagged<T>(key: string): Promise<{ value: T | null; 
 export async function putJsonIf(key: string, value: unknown, etag: string | null) {
   const bytes = new TextEncoder().encode(JSON.stringify(value, null, 2));
   const cond: Record<string, string> = etag ? { "If-Match": etag } : { "If-None-Match": "*" };
-  const signed = await aws().sign(url(key), { method: "PUT", headers: { "Content-Type": "application/json", "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD", ...cond } });
+  const signed = await aws().sign(url(await bucketKey(key)), { method: "PUT", headers: { "Content-Type": "application/json", "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD", ...cond } });
   const r = await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes });
   if (r.status === 412 || r.status === 409) return false;
   if (!r.ok) throw new Error(`storage PUT ${key}: ${r.status} ${(await r.text()).slice(0, 200)}`);
@@ -292,6 +322,10 @@ export async function listObjs(prefix: string): Promise<StoredObj[]> {
 }
 /** R2 alone. */
 export async function listR2(prefix: string): Promise<StoredObj[]> {
+  const pre = await prefixOf(prefix);
+  return unprefixed(pre, await listR2At(pre + prefix));
+}
+async function listR2At(prefix: string): Promise<StoredObj[]> {
   const out: StoredObj[] = [];
   const b = bound();
   if (b) {
@@ -323,11 +357,15 @@ export async function listR2(prefix: string): Promise<StoredObj[]> {
 
 /** The "folders" directly under a prefix (ListObjectsV2 with a delimiter): one request however many files they hold. */
 export async function listDirs(prefix: string): Promise<string[]> {
-  if (!b2Overlaps(prefix)) return listDirsR2(prefix);
-  const out = new Set(await listDirsR2(prefix));
-  await listXml(B2_BASE(), b2(), prefix, true, (xml) => {
-    for (const m of xml.matchAll(/<CommonPrefixes>\s*<Prefix>([\s\S]*?)<\/Prefix>/g)) out.add(unxml(m[1]).slice(prefix.length).replace(/\/$/, ""));
-  });
+  // folder names come back relative to the prefix, so only the prefix asked for needs the workspace's part
+  const at = await bucketKey(prefix);
+  const out = new Set(await listDirsR2(at));
+  if (b2Overlaps(prefix)) {
+    await listXml(B2_BASE(), b2(), at, true, (xml) => {
+      for (const m of xml.matchAll(/<CommonPrefixes>\s*<Prefix>([\s\S]*?)<\/Prefix>/g)) out.add(unxml(m[1]).slice(at.length).replace(/\/$/, ""));
+    });
+  }
+  if (at === "") out.delete("w"); // the top of the bucket, in the first workspace: the others' folder isn't one of its own
   return [...out];
 }
 async function listDirsR2(prefix: string): Promise<string[]> {
@@ -367,7 +405,7 @@ export async function delObjs(keys: string[]) {
 export async function delB2(keys: string[]) {
   for (let i = 0; i < keys.length; i += 16) {
     await Promise.all(keys.slice(i, i + 16).map(async (k) => {
-      const r = await b2().fetch(b2url(k), { method: "DELETE" });
+      const r = await b2().fetch(b2url(await bucketKey(k)), { method: "DELETE" });
       if (!r.ok && r.status !== 404) throw new Error(`B2 DELETE ${k}: ${r.status}`);
     }));
   }
@@ -375,12 +413,14 @@ export async function delB2(keys: string[]) {
 /** R2 alone: one object's size, or null. */
 export async function headR2(key: string) {
   const b = bound();
-  if (b) { const o = await b.head(key); return o ? o.size : null; }
-  const r = await aws().fetch(url(key), { method: "HEAD", cache: "no-store" });
+  const at = await bucketKey(key);
+  if (b) { const o = await b.head(at); return o ? o.size : null; }
+  const r = await aws().fetch(url(at), { method: "HEAD", cache: "no-store" });
   return r.ok ? Number(r.headers.get("content-length") ?? 0) : null;
 }
 /** R2 alone. */
-export async function delR2(keys: string[]) {
+export async function delR2(names: string[]) {
+  const keys = await Promise.all(names.map(bucketKey));
   const b = bound();
   if (b) { for (let i = 0; i < keys.length; i += 1000) await b.delete(keys.slice(i, i + 1000)); return; }
   for (let i = 0; i < keys.length; i += 16) {
@@ -395,7 +435,7 @@ export async function delR2(keys: string[]) {
 export async function copyObj(from: string, to: string) {
   if (onB2(to)) {
     if (onB2(from)) {
-      const signed = await b2().sign(b2url(to), { method: "PUT", headers: { "x-amz-copy-source": `/${process.env.B2_BUCKET!.trim()}/${enc(from)}`, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
+      const signed = await b2().sign(b2url(await bucketKey(to)), { method: "PUT", headers: { "x-amz-copy-source": `/${process.env.B2_BUCKET!.trim()}/${enc(await bucketKey(from))}`, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
       const r = await fetch(signed.url, { method: "PUT", headers: signed.headers });
       if (r.ok) return;
       if (r.status !== 404) throw new Error(`B2 COPY ${from} → ${to}: ${r.status} ${(await r.text()).slice(0, 200)}`);
@@ -412,7 +452,8 @@ export async function copyObj(from: string, to: string) {
     if (!(await putStreamR2(to, src.body, size))) await putObj(to, await src.arrayBuffer());
     return;
   }
-  const signed = await aws().sign(url(to), { method: "PUT", headers: { "x-amz-copy-source": `/${BUCKET}/${from.split("/").map(encodeURIComponent).join("/")}`, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
+  const [src, dst] = await Promise.all([bucketKey(from), bucketKey(to)]);
+  const signed = await aws().sign(url(dst), { method: "PUT", headers: { "x-amz-copy-source": `/${BUCKET}/${src.split("/").map(encodeURIComponent).join("/")}`, "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD" } });
   const r = await fetch(signed.url, { method: "PUT", headers: signed.headers });
   if (!r.ok) throw new Error(`storage COPY ${from} → ${to}: ${r.status} ${(await r.text()).slice(0, 200)}`);
 }
@@ -430,7 +471,8 @@ export const presign = (key: string, method: "GET" | "PUT" = "GET", ttlSec = 6 *
 export const presignR2 = (key: string, method: "GET" | "PUT" = "GET", ttlSec = 6 * 3600, download?: string, stable = false) =>
   presignOn(false, key, method, ttlSec, download, stable);
 async function presignOn(b2k: boolean, key: string, method: "GET" | "PUT", ttlSec: number, download?: string, stable = false) {
-  const u = new URL(b2k ? b2url(key) : url(key));
+  const at = await bucketKey(key);
+  const u = new URL(b2k ? b2url(at) : url(at));
   const start = stable ? Math.floor(Date.now() / WINDOW) * WINDOW : 0;
   u.searchParams.set("X-Amz-Expires", String(Math.min(ttlSec + (stable ? WINDOW / 1000 : 0), 7 * 24 * 3600)));
   if (method === "GET") {

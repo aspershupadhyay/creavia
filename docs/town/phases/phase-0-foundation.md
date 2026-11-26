@@ -41,8 +41,9 @@ tool registry, Home, and the slow outside approvals started.
   - [x] Slice 1, the database: `workspaces`, `memberships`, `invites`; `workspace_id` on posts, comments, activity and
         media (today's studio backfilled as the first workspace); `lib/tenant.ts` decides the workspace, failing closed;
         every query in `lib/db.ts` scoped; the session names its workspace; isolation tests on a real Postgres in CI
-  - [ ] Slice 2: stored-file prefixes, settings and state per workspace, cron, GPU callbacks and Auto-DM in explicit
-        workspaces
+  - [x] Slice 2a, stored files: every key under its workspace's prefix in `lib/store.ts` (settings and state files
+        included), shared service keys, in-memory caches per workspace; isolation tests on the bucket
+  - [ ] Slice 2b: cron, GPU callbacks, webhooks, MCP keys, public media links and the janitor in explicit workspaces
   - [ ] Slice 4: row-level security and the full isolation sweep (routes, MCP tools, file links)
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
       Slice 3 of the same spec; needs slice 2 first (sign-up creates workspaces).

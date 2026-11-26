@@ -32,7 +32,8 @@ export function useClient(c: SqlClient | null) {
 
 setResolvers({
   session: async () => (await import("./session")).sessionWorkspace(),
-  workspaceCount: async () => Number(((await sql().query("select count(*)::int n from workspaces")) as { n: number }[])[0]?.n ?? 0),
+  // no database configured: only the one studio there always was can exist
+  workspaceCount: async () => (!hasDb() && !client ? 1 : Number(((await sql().query("select count(*)::int n from workspaces")) as { n: number }[])[0]?.n ?? 0)),
 });
 
 let schema: Promise<void> | null = null;

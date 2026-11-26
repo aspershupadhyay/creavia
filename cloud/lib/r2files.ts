@@ -5,6 +5,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { b2On, copyObj, delObjs, getObj, headObj, listB2, listR2, presign, putObj } from "./store";
 import { safeEqual } from "./worker";
+import { workspaceId } from "./tenant";
 
 
 
@@ -62,11 +63,15 @@ export async function thumbUrl(key: string, width: number, format: ThumbFormat, 
 // ── the storage budget: R2's free tier is 10 GB, so new files stop at 90 % of it (STORAGE_CAP_GB, Settings → Usage)
 
 const CAP = Number(process.env.STORAGE_CAP_GB || 9) * 1e9;
-let seen: { at: number; bytes: number; r2: number; b2: number; parts: Record<string, number> } | null = null;
+type Use = { at: number; bytes: number; r2: number; b2: number; parts: Record<string, number> };
+/** Each workspace's count, kept 5 minutes. */
+const seenBy = new Map<string, Use>();
 
 /** What the buckets hold, by top-level part (cache, models, workspace…), counted at most every 5 minutes: r2 and b2
  *  are each bucket's share (b2 is 0 until Backblaze is on; lib/store.ts). */
 export async function storageUse(fresh = false) {
+  const w = await workspaceId();
+  const seen = seenBy.get(w);
   if (!fresh && seen && Date.now() - seen.at < 5 * 60_000) return { ...seen, cap: CAP };
   const parts: Record<string, number> = {};
   const [inR2, inB2] = await Promise.all([listR2(""), b2On() ? listB2("") : Promise.resolve([])]);
@@ -76,8 +81,9 @@ export async function storageUse(fresh = false) {
     parts[p] = (parts[p] ?? 0) + o.size;
   }
   const r2 = sum(inR2), b2 = sum(inB2);
-  seen = { at: Date.now(), bytes: r2 + b2, r2, b2, parts };
-  return { ...seen, cap: CAP };
+  const now: Use = { at: Date.now(), bytes: r2 + b2, r2, b2, parts };
+  seenBy.set(w, now);
+  return { ...now, cap: CAP };
 }
 
 /** Refuse a new file that would take the bucket past the budget, saying what fills it. */
@@ -85,6 +91,7 @@ export async function assertRoom(size: number | null) {
   const u = await storageUse().catch(() => null);
   if (!u) return; // can't count right now: don't block an upload over it
   if (u.bytes + (size ?? 0) <= CAP) {
+    const seen = seenBy.get(await workspaceId());
     if (seen) seen.bytes += size ?? 0;
     return;
   }
