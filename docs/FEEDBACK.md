@@ -4,6 +4,15 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-26: handle UI and UX the way Town does, planned
+
+- **"Work on the UI & UX just like Town.com handles, so make it a planned one":** the ask box as the front door, an
+  assistant per person that learns you before you teach it, memory you can see, work reported as outcomes waiting for
+  your OK, a routines library, a daily brief, trust in plain words. Taken as patterns, never Town's brand or words
+  (docs/town/stages/04-ux.md, "The direction").
+- **Less foundation polish, more product:** keep supporting work lean (no ADR per small item) and move on to what
+  creators see.
+
 ## 2026-11-14: Sentry everywhere, replays only on errors
 
 - **Sentry in all three parts:** the cloud, the desktop app and the engine, each its own project in the `creavia`
