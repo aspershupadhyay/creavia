@@ -30,7 +30,10 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
   390 px, on every pull request ([ADR 0002](../adr/0002-end-to-end-tests.md)).
 - **Sentry is in** (2026-11-14): errors from the cloud, the desktop (only if the person turns it on) and the engine,
   with nothing personal sent; a real error from each was confirmed ([ADR 0003](../adr/0003-sentry.md)).
-- **Next:** the rest of the quality foundation (Playwright past sign-in once staging exists; see
+- **Staging is in the repo** (2026-11-26): a second Worker with its own bucket, database and test accounts; every
+  merge to main is tested there signed in before production ([ADR 0004](../adr/0004-staging.md)). It goes live with
+  the owner's one-time setup.
+- **Next:** the owner's setup of staging, then retesting live updates on it (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.

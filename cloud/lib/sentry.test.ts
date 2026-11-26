@@ -1,7 +1,7 @@
 // What the cloud sends to Sentry (lib/sentry.ts): off without a DSN, and never a key, cookie, IP or secret link.
 import type { ErrorEvent } from "@sentry/nextjs";
 import { describe, expect, it } from "vitest";
-import { scrubEvent, sentryOptions, traceRate, usableDsn } from "./sentry";
+import { browserEnvironment, scrubEvent, sentryOptions, traceRate, usableDsn } from "./sentry";
 
 const DSN = "https://abc123@o1.ingest.de.sentry.io/42";
 
@@ -38,6 +38,12 @@ describe("sentryOptions", () => {
       dataCollection: { userInfo: false, cookies: false, httpBodies: [], genAI: { inputs: false, outputs: false } },
     });
     expect(sentryOptions(DSN).beforeSend).toBe(scrubEvent);
+  });
+
+  it("tags the staging Worker's pages as staging, though it runs production's build", () => {
+    expect(browserEnvironment("creavia-cloud-staging.ana.workers.dev", "production")).toBe("staging");
+    expect(browserEnvironment("creavia-cloud.ana.workers.dev", "production")).toBe("production");
+    expect(browserEnvironment("studio.example.com", "production")).toBe("production");
   });
 
   it("samples every trace while developing and a tenth in production", () => {

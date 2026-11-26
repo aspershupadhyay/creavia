@@ -30,6 +30,10 @@ export function usableDsn(dsn: string | undefined): string | undefined {
   }
 }
 
+/** The browser's environment: "staging" on the staging Worker, which runs the same build as production. */
+export const browserEnvironment = (hostname: string, built: string) =>
+  hostname.startsWith("creavia-cloud-staging.") ? "staging" : built;
+
 /** Every trace while developing (to see one when checking); a tenth in production, where volume costs quota. */
 export const traceRate = (environment: string) => (environment === "production" ? 0.1 : 1);
 

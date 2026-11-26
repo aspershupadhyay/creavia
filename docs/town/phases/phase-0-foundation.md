@@ -17,13 +17,19 @@ tool registry, Home, and the slow outside approvals started.
   - [ ] Owner: mark the three Checks jobs as required on `main` (Settings → Branches)
   - [x] Playwright: sign-in and first-run flows in the cloud and the desktop, at full width and 390 px
         (`e2e/`, [ADR 0002](../../adr/0002-end-to-end-tests.md))
-  - [ ] Playwright past sign-in, then sign-up and invites (needs the staging cloud, below)
+  - [ ] Playwright past sign-in: written (`e2e/staging/`: sign-in, wrong password, sign-out, two people one
+        workspace), runs once staging is set up (below); then sign-up and invites with the Accounts item
   - [x] Sentry for errors in the cloud, the desktop (opt-in) and the engine, a real error from each confirmed
         ([ADR 0003](../../adr/0003-sentry.md))
   - [ ] Owner: the Sentry variables and secret in GitHub and on the Worker (ADR 0003, "For the owner, once")
 - [ ] **A Creavia cloud of its own, plus staging:** the `creavia-cloud` Worker, the `creavia` bucket, its own Neon
       project, and a staging copy with test accounts. Never the live VoiceBox (blocked in the app and by the Guard
       workflow).
+  - [x] Staging in the repo: `env.staging` (its own Worker, bucket, database branch), `npm run setup -- --staging` with
+        two test accounts, and the Cloud workflow deploying staging, testing it signed in, then production
+        ([ADR 0004](../../adr/0004-staging.md)); one lockfile and `npm ci` everywhere
+  - [ ] Owner: the Neon `staging` branch, `npm run setup -- --staging`, then `STAGING_URL` and the `E2E_*` secrets in
+        GitHub (ADR 0004, "For the owner, once"); the first signed-in run confirms it
 - [ ] **Retest live updates on staging:** `@neon/realtime` moved 0.1 → 0.2 (a 0.x minor can break); check the
       client and server still talk before relying on it.
 - [ ] **Ports and adapters:** storage, database, realtime, queues, email, payments and AI behind `cloud/lib/ports/`, so

@@ -1,13 +1,15 @@
-# Creavia Cloud: checked on every pull request (schema in step with db/, typecheck, the Workers build). On main it
-# deploys to Cloudflare when the repository has CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (your own
-# studio); without them it only builds. Forks deployed with the Deploy to Cloudflare button deploy through Cloudflare.
+# Creavia Cloud: checked on every pull request (schema in step with db/, typecheck, the Workers build). On main, when
+# the repository has CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (your own studio), the same build goes to
+# staging first, the signed-in end-to-end tests run there (once the STAGING_URL variable and the E2E_* secrets are set),
+# and production is deployed only if they pass (docs/adr/0004-staging.md). Without the secrets it only builds. Forks
+# deployed with the Deploy to Cloudflare button deploy through Cloudflare.
 name: Cloud
 on:
   pull_request:
-    paths: ["cloud/**", ".github/workflows/cloud.yml"]
+    paths: ["cloud/**", "e2e/staging/**", "playwright.staging.config.ts", ".github/workflows/cloud.yml"]
   push:
     branches: [main]
-    paths: ["cloud/**", ".github/workflows/cloud.yml"]
+    paths: ["cloud/**", "e2e/staging/**", "playwright.staging.config.ts", ".github/workflows/cloud.yml"]
   workflow_dispatch:
 
 concurrency: { group: "cloud-${{ github.ref }}", cancel-in-progress: false }
@@ -25,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: lib/schema.ts matches db/*.sql
         working-directory: cloud
         run: node scripts/gen-schema.mjs && git diff --exit-code lib/schema.ts
@@ -35,7 +37,35 @@ jobs:
         run: npx -y tsx scripts/check-register.mts
       - name: Workers build (OpenNext)
         run: npm run build:worker -w cloud
-      - name: Deploy
+      # staging first (wrangler.jsonc env.staging: its own Worker, bucket and database), set up once with
+      # `npm run setup -- --staging` from cloud/; until then this step says so and production deploys as before
+      - name: Deploy to staging
+        id: staging
+        if: github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: cloud
+        run: |
+          if npx wrangler deployments list --env staging >/dev/null 2>&1; then
+            npx opennextjs-cloudflare deploy --env staging && echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No staging Worker yet (npm run setup -- --staging, docs/adr/0004-staging.md): deploying without it."
+          fi
+      - name: Chromium for Playwright
+        if: steps.staging.outputs.deployed == 'true' && vars.STAGING_URL != ''
+        run: npx playwright install --with-deps chromium
+      - name: Signed-in end-to-end tests on staging
+        if: steps.staging.outputs.deployed == 'true' && vars.STAGING_URL != ''
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+          E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
+          E2E_MEMBER_EMAIL: ${{ secrets.E2E_MEMBER_EMAIL }}
+          E2E_MEMBER_PASSWORD: ${{ secrets.E2E_MEMBER_PASSWORD }}
+        run: npm run e2e:staging
+      - name: The staging report, when something failed
+        if: failure() && steps.staging.outputs.deployed == 'true'
+        uses: actions/upload-artifact@v4
+        with: { name: playwright-staging-report, path: playwright-report, retention-days: 7 }
+      - name: Deploy to production
         if: github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
         working-directory: cloud
         run: npx opennextjs-cloudflare deploy

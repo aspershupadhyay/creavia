@@ -2,11 +2,12 @@
 // and image masked (the owner's choice, 2026-11-14). The DSN is set when the cloud is built (NEXT_PUBLIC_SENTRY_DSN);
 // without it, nothing is sent.
 import * as Sentry from "@sentry/nextjs";
-import { sentryOptions } from "./lib/sentry";
+import { browserEnvironment, sentryOptions } from "./lib/sentry";
 
+// staging and production run the same build (docs/adr/0004-staging.md), so the page tells them apart by its address
 const base = sentryOptions(
   process.env.NEXT_PUBLIC_SENTRY_DSN,
-  process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
+  browserEnvironment(location.hostname, process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV),
 );
 
 Sentry.init({
