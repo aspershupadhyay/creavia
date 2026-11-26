@@ -17,9 +17,11 @@ let cache: { at: number; emails: string[] } | null = null;
 /** Every email allowed in: the Worker's list, Settings' list, and the current workspace members (cached a minute). */
 export async function allowedEmails(fresh = false) {
   if (!fresh && cache && Date.now() - cache.at < 60_000) return cache.emails;
-  const { getSettings } = await import("./settings");
+  const [{ getSettings }, { asWorkspace, FOUNDING }] = await Promise.all([import("./settings"), import("./tenant")]);
   const [extra, members] = await Promise.all([
-    getSettings().then((s) => s.workspace_emails).catch(() => [] as string[]),
+    // the studio's sign-in list lives in the first workspace's settings: named here, because this runs while the
+    // session (and so its workspace) is still being checked (lib/tenant.ts)
+    asWorkspace(FOUNDING, getSettings).then((s) => s.workspace_emails).catch(() => [] as string[]),
     // the studio's team as a whole (users.member), not one workspace's: this is the sign-in list, checked before any
     // workspace is known
     import("./users").then(async (u) => (await u.listUsers()).map((m) => m.email.toLowerCase())).catch(() => null),

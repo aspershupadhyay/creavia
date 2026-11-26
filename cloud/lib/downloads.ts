@@ -19,6 +19,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { getJson, getJsonTagged, getObj, headObj, presign, putJson, putJsonIf, putObj } from "./store";
+import { workspaceId } from "./tenant";
 
 export type Source = "instagram" | "youtube" | "tiktok" | "x" | "pinterest" | "cosmos" | "facebook" | "threads" | "reddit" | "vimeo" | "web";
 export type DlItem = { media: string; name: string; kind: string; size: number; preview: string | null };
@@ -159,10 +160,13 @@ function keepCookies(r: Response, url: string, jar: Map<string, string>) {
     jar.set(`${at}\n${pair.slice(0, i).trim()}`, pair.slice(i + 1).trim());
   }
 }
-let savedCookies: { at: number; list: Cookie[] } | null = null;
+/** Each workspace's saved site sign-ins, read at most once a minute. */
+const savedCookies = new Map<string, { at: number; list: Cookie[] }>();
 async function signIns() {
-  if (!savedCookies || Date.now() - savedCookies.at > 60_000) savedCookies = { at: Date.now(), list: parseCookies(await cookies().catch(() => "")) };
-  return savedCookies.list;
+  const w = await workspaceId();
+  let hit = savedCookies.get(w);
+  if (!hit || Date.now() - hit.at > 60_000) savedCookies.set(w, (hit = { at: Date.now(), list: parseCookies(await cookies().catch(() => "")) }));
+  return hit.list;
 }
 
 async function safeFetch(raw: string, init: { headers?: Record<string, string>; ms?: number; method?: string; as?: "page" | "file"; referer?: string | null; jar?: Map<string, string> } = {}) {

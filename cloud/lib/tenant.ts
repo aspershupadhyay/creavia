@@ -23,6 +23,8 @@ export class NoWorkspace extends Error {
 }
 
 const scope = new AsyncLocalStorage<string>();
+/** Set while the session's workspace is being worked out: anything that asks for the workspace then is a loop. */
+const resolving = new AsyncLocalStorage<true>();
 
 /** Runs fn inside one workspace: every query it makes, however deep, is scoped to it. */
 export function asWorkspace<T>(id: string, fn: () => T): T {
@@ -41,9 +43,15 @@ let count: { at: number; n: number } | null = null;
 /** How many workspaces exist, cached for a minute (only the fallback for callers with no person needs it). */
 async function workspaceCount() {
   if (count && Date.now() - count.at < 60_000) return count.n;
-  if (!resolvers) throw new NoWorkspace("the database is not set up");
-  count = { at: Date.now(), n: await resolvers.workspaceCount() };
+  count = { at: Date.now(), n: await (await plugged()).workspaceCount() };
   return count.n;
+}
+/** The resolvers, loading lib/db.ts (which plugs them in) when nothing has yet: code that only stores files never
+ *  imports it itself. */
+async function plugged(): Promise<Resolvers> {
+  if (!resolvers) await import("./db");
+  if (!resolvers) throw new NoWorkspace("the database layer didn't load");
+  return resolvers;
 }
 /** Tests: forget the cached count. */
 export const forgetCount = () => {
@@ -54,9 +62,30 @@ export const forgetCount = () => {
 export async function workspaceId(): Promise<string> {
   const pinned = scope.getStore();
   if (pinned) return pinned;
-  if (!resolvers) throw new NoWorkspace("the database is not set up");
-  const fromSession = await resolvers.session();
+  const r = await plugged();
+  // checking a session reads the sign-in list, which must name its own workspace (lib/access.ts) rather than ask here
+  if (resolving.getStore()) throw new NoWorkspace("asked for the workspace while working out the session's own");
+  const session = r.session;
+  const fromSession = await resolving.run(true, () => session());
   if (fromSession) return fromSession;
   if ((await workspaceCount()) <= 1) return FOUNDING;
   throw new NoWorkspace("this request has no person, and the studio has more than one workspace");
+}
+
+/** Where a workspace's files live in the bucket: the first workspace keeps the keys it always had; every other one is
+ *  under w/<id>/ (lib/store.ts adds it, so callers never see it). */
+export const keyPrefix = (workspace: string) => (workspace === FOUNDING ? "" : `w/${workspace}/`);
+
+/** A value kept in memory per workspace. A module-level cache of workspace data must be one of these, or the first
+ *  workspace to fill it would hand its data to the next. */
+export function perWorkspace<T>() {
+  const values = new Map<string, T>();
+  return {
+    get: async (): Promise<T | undefined> => values.get(await workspaceId()),
+    set: async (value: T | undefined) => {
+      const w = await workspaceId();
+      if (value === undefined) values.delete(w);
+      else values.set(w, value);
+    },
+  };
 }

@@ -5,6 +5,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { getJson } from "../store";
 import { mutate } from "./control";
+import { workspaceId } from "../tenant";
 
 const FILE = "auto/secrets.json";
 export const SECRETS = {
@@ -32,10 +33,13 @@ function open(e: string): string | null {
   } catch { return null; }
 }
 // a repo task calls GitHub many times: one R2 read per few seconds, cleared on a change here
-let memo: { at: number; f: Promise<File> } | null = null;
-const read = () => {
-  if (!memo || Date.now() - memo.at > 10_000) memo = { at: Date.now(), f: getJson<File>(FILE).catch(() => null).then((f) => f ?? {}) };
-  return memo.f;
+// (one per workspace: each keeps its own keys)
+const memo = new Map<string, { at: number; f: Promise<File> }>();
+const read = async () => {
+  const w = await workspaceId();
+  let hit = memo.get(w);
+  if (!hit || Date.now() - hit.at > 10_000) memo.set(w, (hit = { at: Date.now(), f: getJson<File>(FILE).catch(() => null).then((f) => f ?? {}) }));
+  return hit.f;
 };
 
 /** The key a tool uses: the one saved in the dashboard, else the Vercel variable. */
@@ -64,13 +68,13 @@ export async function setSecret(name: SecretName, value: string | null, by: stri
     if (value.length < 16 || value.length > 400 || /\s/.test(value)) throw new Error(`That doesn't look like a ${SECRETS[name].label}`);
     if (name === "github") note = await checkGithub(value);
   }
-  memo = null;
+  memo.delete(await workspaceId());
   await mutate<File>(FILE, {}, (f) => {
     if (value == null) delete f[name];
     else f[name] = { enc: seal(value), last4: value.slice(-4), at: Date.now(), by, ...(note ? { note } : {}) };
     return f;
   });
-  memo = null;
+  memo.delete(await workspaceId());
   return secretsStatus();
 }
 

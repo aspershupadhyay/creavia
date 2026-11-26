@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** slice 1 done (2026-11-26), slice 2 next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** slice 1 done, slice 2a done (2026-11-26), slice 2b next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem
@@ -74,9 +74,18 @@ Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test 
 1. **Database workspaces:** the tables, `workspace_id` on posts, comments, activity and media with the first workspace
    backfilled, one place that resolves the workspace (`lib/tenant.ts`), every query in `lib/db.ts` scoped, the session
    naming its workspace, members per workspace, isolation tests against a real Postgres.
-2. **Stored files and background work:** key prefixes in `lib/store.ts`, settings and state files per workspace,
-   cron, GPU callbacks and Auto-DM inside explicit workspaces.
+2. **Stored files and background work**, in two pull requests:
+   - **2a, stored files (done):** `lib/store.ts` puts every key under its workspace's prefix where it becomes a bucket
+     address, and lists hand keys back without it, so every settings and state file is per workspace with no caller
+     changed. Service keys (`SHARED`: sign-in lockouts, backups, GPU build caches) stay shared; a key spelled `w/…`
+     is refused; the first workspace never lists the others' files. Every in-memory cache of workspace data is kept
+     per workspace. The sign-in list names the first workspace itself, since it is read while a session is checked.
+   - **2b, background work:** an explicit workspace for cron (each job per workspace), GPU callbacks and job results
+     (the job carries it), Auto-DM and publishing webhooks (from the connected account), MCP keys (the key's
+     workspace), public media links (the link names it), and the janitor (per workspace). Until then these callers
+     use the first workspace, which is safe while it is the only one.
 3. **Accounts:** open sign-up (hosted only, `OPEN_SIGNUP`), invites, roles in the API, password reset (email port),
-   Google sign-in, the workspace switcher.
+   Google sign-in, the workspace switcher; the sign-in log and "sign out everywhere" per workspace (shared under
+   `auth/` today).
 4. **Second lock and the full sweep:** row-level security, and the isolation sweep over every route, MCP tool and file
    link with another workspace's ids.

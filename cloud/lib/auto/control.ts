@@ -3,6 +3,7 @@
 // that made it. Everything lives in R2 under auto/; writes that several calls race on use conditional puts.
 import { randomBytes } from "node:crypto";
 import { getJson, getJsonTagged, listObjs, putJsonIf } from "../store";
+import { workspaceId } from "../tenant";
 
 const CONTROL = "auto/control.json";
 const APPROVALS = "auto/approvals.json";
@@ -71,16 +72,19 @@ export async function setControl(patch: Record<string, unknown>, by: string): Pr
 // ── units ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const day = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
-let usageCache: { at: number; balance: number | null } | null = null;
+/** Each workspace's Colab balance, read at most once a minute. */
+const usageCache = new Map<string, { at: number; balance: number | null }>();
 
 /** Colab units spent today (UTC): the balance at the day's first look minus now. null when Colab isn't connected. */
 export async function unitsToday(): Promise<{ spent: number | null; balance: number | null; day: string }> {
   const d = day();
-  if (!usageCache || Date.now() - usageCache.at > 60_000) {
+  const w = await workspaceId();
+  let hit = usageCache.get(w);
+  if (!hit || Date.now() - hit.at > 60_000) {
     const u = await import("../colab").then((c) => c.usage()).catch(() => null);
-    usageCache = { at: Date.now(), balance: u && Number.isFinite(u.balance) ? u.balance : null };
+    usageCache.set(w, (hit = { at: Date.now(), balance: u && Number.isFinite(u.balance) ? u.balance : null }));
   }
-  const balance = usageCache.balance;
+  const balance = hit.balance;
   if (balance == null) return { spent: null, balance: null, day: d };
   const rec = await mutate<{ day: string; start: number; last: number }>("auto/units.json", { day: d, start: balance, last: balance }, (r) => {
     if (r.day !== d) return { day: d, start: balance, last: balance };

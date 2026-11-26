@@ -6,6 +6,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getJson, putJson } from "./store";
 import { loadWorker, saveWorker, STALE_MS, type Backend, type WorkerRecord } from "./registry";
+import { workspaceId } from "./tenant";
 
 export type { Backend };
 export type Cloud = "modal" | "cerebrium";
@@ -64,11 +65,14 @@ const USAGE: Record<Cloud, string> = { modal: "voicebox/modal-usage.json", cereb
 export type Tracked = Cloud | "kaggle";
 const JOBS: Record<Tracked, string> = { modal: "voicebox/modal-jobs.json", cerebrium: "voicebox/cerebrium-jobs.json", kaggle: "voicebox/kaggle-jobs.json" };
 
-let prefsCache: { at: number; v: GpuPrefs } | null = null;
+/** Each workspace's GPU choices, read at most every 4 s. */
+const prefsCache = new Map<string, { at: number; v: GpuPrefs }>();
 export async function getPrefs(): Promise<GpuPrefs> {
-  if (prefsCache && Date.now() - prefsCache.at < 4000) return prefsCache.v;
+  const w = await workspaceId();
+  const hit = prefsCache.get(w);
+  if (hit && Date.now() - hit.at < 4000) return hit.v;
   const v = { ...DEFAULT_PREFS, ...((await getJson<Partial<GpuPrefs>>(PREFS).catch(() => null)) ?? {}) };
-  prefsCache = { at: Date.now(), v };
+  prefsCache.set(w, { at: Date.now(), v });
   return v;
 }
 
@@ -98,7 +102,7 @@ export async function setPrefs(patch: Record<string, unknown>): Promise<GpuPrefs
   if (patch.stop === true) next[`${cloud}_stop_at`] = Date.now();
   if (patch.stop === false) delete next[`${cloud}_stop_at`];
   await putJson(PREFS, next);
-  prefsCache = { at: Date.now(), v: next };
+  prefsCache.set(await workspaceId(), { at: Date.now(), v: next });
   return next;
 }
 
@@ -239,19 +243,22 @@ export function unseal(e: string): string | null {
     return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString("utf8");
   } catch { return null; }
 }
-let keyCache: { at: number; v: string | null } | null = null;
+/** Each workspace's Modal key, read at most every 10 s. */
+const keyCache = new Map<string, { at: number; v: string | null }>();
 /** The Modal key, or null when none was made. */
 export async function modalKey(): Promise<string | null> {
-  if (keyCache && Date.now() - keyCache.at < 10_000) return keyCache.v;
+  const w = await workspaceId();
+  const hit = keyCache.get(w);
+  if (hit && Date.now() - hit.at < 10_000) return hit.v;
   const f = await getJson<{ enc: string }>(KEYFILE).catch(() => null);
   const v = f ? unseal(f.enc) : null;
-  keyCache = { at: Date.now(), v };
+  keyCache.set(w, { at: Date.now(), v });
   return v;
 }
 export async function newModalKey(by: string) {
   const key = `vbmd_${randomBytes(30).toString("base64url")}`;
   await putJson(KEYFILE, { enc: seal(key), at: Date.now(), by });
-  keyCache = { at: Date.now(), v: key };
+  keyCache.set(await workspaceId(), { at: Date.now(), v: key });
   return key;
 }
 /** The password the dashboard sends a GPU: the cloud key once one was made (Modal and Cerebrium share it; else
