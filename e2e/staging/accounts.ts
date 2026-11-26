@@ -36,5 +36,5 @@ export async function signIn(page: Page, who: Account, next = "/posts") {
   await page.getByLabel("Email").fill(who.email);
   await page.getByLabel("Password").fill(who.password);
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(new RegExp(`${next.replace(/[/?]/g, "\\$&")}$`));
+  await expect(page).toHaveURL((url) => `${url.pathname}${url.search}` === next);
 }
