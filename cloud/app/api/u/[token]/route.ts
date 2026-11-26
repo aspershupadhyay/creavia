@@ -2,11 +2,12 @@
 // claim that can only start and finish uploads into its one folder, up to its file cap. Nothing is read or listed.
 import { completeUploads, startUpload } from "@/lib/inbox";
 import { openLink, take } from "@/lib/auto/uplinks";
+import { claimWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+async function postHere(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const l = openLink((await params).token);
   if (!l) return Response.json({ error: "This link has expired or isn't valid. Ask for a new one." }, { status: 403 });
   const body = await req.json().catch(() => ({}));
@@ -27,3 +28,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
 }
+
+// run in the workspace the link names, under its signature (lib/bound.ts)
+export const POST = scoped(claimWorkspace(3, "upl"), postHere);

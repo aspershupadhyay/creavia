@@ -3,6 +3,7 @@
 // WORKER_SECRET), so setting one up needs no copy of this repository. They hold no secrets.
 import { CEREBRIUM_PY, CEREBRIUM_TOML, MODAL_APP_PY } from "@/lib/bundle";
 import { workerCaller } from "@/lib/gpus";
+import { workerWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +13,12 @@ const FILES: Record<string, [string, string]> = {
   "voicebox_cerebrium.py": [CEREBRIUM_PY, "text/x-python"],
 };
 
-export async function GET(req: Request) {
+async function getHere(req: Request) {
   if (!(await workerCaller(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   const f = FILES[new URL(req.url).searchParams.get("f") || "voicebox_modal.py"];
   if (!f) return Response.json({ error: "no such file" }, { status: 404 });
   return new Response(f[0], { headers: { "Content-Type": `${f[1]}; charset=utf-8`, "Cache-Control": "no-store" } });
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const GET = scoped(workerWorkspace, getHere);

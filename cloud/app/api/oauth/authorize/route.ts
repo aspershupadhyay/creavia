@@ -1,6 +1,7 @@
 // Consent form target: checks MCP_TOKEN (or the dashboard cookie), then redirects back to the client with a code.
 import { checkAuthorize, issueCode, origin, requestError } from "@/lib/oauth";
 import { isAuthed, tokenOk } from "@/lib/session";
+import { FOUNDING, workspaceId } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,8 @@ export async function POST(req: Request) {
     retry.searchParams.set("wrong", "1");
     return Response.redirect(retry, 303);
   }
-  back.searchParams.set("code", issueCode(a.client_id, a.redirect_uri, a.code_challenge));
+  // the connection works in the approver's workspace; the master key's is the first workspace
+  const w = tokenOk(form.get("token")?.trim()) ? FOUNDING : await workspaceId();
+  back.searchParams.set("code", issueCode(a.client_id, a.redirect_uri, a.code_challenge, w));
   return Response.redirect(back, 303);
 }

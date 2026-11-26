@@ -57,7 +57,9 @@ export async function findWaste(now = Date.now()): Promise<{ gpu_busy: boolean; 
   // bytes whose file is gone: every row's key, straight from the database
   const { hasDb, sql } = await import("./db");
   if (hasDb()) {
-    const rows = (await sql().query("select id, r2_key from media")) as { id: string; r2_key: string | null }[];
+    // this workspace's rows: the janitor runs once per workspace, over that workspace's files (lib/workspaces.ts)
+    const { workspaceId } = await import("./tenant");
+    const rows = (await sql().query("select id, r2_key from media where workspace_id = $1", [await workspaceId()])) as { id: string; r2_key: string | null }[];
     const live = new Set(rows.map((r) => r.r2_key).filter(Boolean) as string[]);
     const ids = new Set(rows.map((r) => r.id));
     const hashes = new Set([...live].map(thumbOf));

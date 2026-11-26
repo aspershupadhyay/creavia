@@ -14,6 +14,8 @@ import { FOLDER_RE, subtree } from "./filetree";
 import { listSummaries, signer } from "./library";
 import { resizable, thumbUrl } from "./r2files";
 import { getJsonTagged, presign, putJson, putJsonIf } from "./store";
+import { bindTo, readBound } from "./bound";
+import { asWorkspace, workspaceId } from "./tenant";
 
 export type Share = {
   id: string; hash: string; kind: "carousel" | "folder"; ref: string; name: string; created: number; by: string;
@@ -64,7 +66,7 @@ export async function createShare(input: { kind?: unknown; ref?: unknown; days?:
     if (!f || tree.trash[`f:${ref}`]) throw new FilesError("that folder doesn't exist", 404);
     name = f.name;
   }
-  const token = randomBytes(32).toString("base64url");
+  const token = bindTo(await workspaceId(), randomBytes(32).toString("base64url")); // names its workspace (lib/bound.ts)
   const hash = hashOf(token);
   const s: Share = { id: hash.slice(0, 12), hash, kind, ref, name, created: Date.now(), by, expires: Date.now() + days * 86_400_000, revoked: null,
     downloads: input.downloads !== false, views: 0, last_view: null, tokens: {} };
@@ -90,7 +92,12 @@ export type SharedFile = { id: string; name: string; kind: string; thumb: string
 
 /** The page behind a link: null when it doesn't exist, ran out or was revoked. Counts the visit. */
 export async function openShare(token: string): Promise<{ share: ReturnType<typeof outOf>; files: SharedFile[] } | null> {
-  if (!TOKEN_RE.test(token)) return null;
+  // looked up only in the workspace the token names: another workspace's id in it finds nothing there
+  const { workspace, rest } = readBound(token);
+  if (!TOKEN_RE.test(rest)) return null;
+  return asWorkspace(workspace, () => openShareHere(token));
+}
+async function openShareHere(token: string): Promise<{ share: ReturnType<typeof outOf>; files: SharedFile[] } | null> {
   const hash = hashOf(token);
   const s = (await all()).find((x) => x.hash === hash);
   if (!s || s.revoked || s.expires < Date.now()) return null;

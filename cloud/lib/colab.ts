@@ -340,6 +340,7 @@ export const appOrigin = (fallback?: string) =>
  *  purpose picks the GPU from settings (voice: voiceovers, an L4 by default; heavy: training and video, an A100); an
  *  explicit gpu wins over both. */
 export async function start(origin: string, gpu?: Gpu, opts: { purpose?: Purpose; high_ram?: boolean; for_downloads?: boolean; cpu?: boolean } = {}) {
+  await (await import("./tenant")).onlyFirstWorkspace("Colab GPUs");
   const t0 = Date.now(); // the whole start has to fit in the request's 300 s (maxDuration of the dash and MCP routes)
   const cfg = await getConfig();
   const want = gpu && GPUS.includes(gpu) ? gpu : opts.purpose === "voice" ? cfg.voice_gpu : opts.purpose === "heavy" ? cfg.heavy_gpu : cfg.gpu;

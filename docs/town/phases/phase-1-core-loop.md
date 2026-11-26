@@ -15,7 +15,13 @@ Shorts → see results. VoiceBox's back-end capabilities behind screens designed
 - [ ] **Ask Vee:** chat that acts through the registry, approvals, Tasks view, memory (first version), the crew line on
       Home.
 - [ ] **Where AI runs:** own keys (BYOK) and local models; cloud GPU with per-workspace caps.
-- [ ] The agent runtime (durable tasks, budgets, evals) for Juno, Bolt, Tempo, Lens, Atlas.
+- [ ] The agent runtime (durable tasks, budgets, evals) for Juno, Bolt, Tempo, Lens, Atlas; an autonomy setting per
+      routine (Suggest · Prepare · Do then tell).
+- [ ] **Your page:** Vee's memory as a page you can read and edit (voice and style, audience, goals, projects, people),
+      each fact linked to its source (stages/04-ux.md, pattern 4).
+- [ ] **Routines:** the library by creator type, "Describe your own" → Build it; featured: Morning brief, 24-hour post
+      check, Weekly content plan (pattern 7).
+- [ ] **Your morning brief:** in the app, by email and as 1-minute audio; weekly free, daily paid (pattern 8).
 
 ## Done when
 

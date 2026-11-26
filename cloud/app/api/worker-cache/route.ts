@@ -2,12 +2,13 @@
 // compiled kernels per GPU, kept in R2 under cache/. The worker holds no storage keys; it gets presigned links here,
 // with the same secret as the heartbeat, and only for keys under cache/.
 import { presign } from "@/lib/store";
+import { workerWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 
 const KEY = /^cache\/(?:[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/){1,4}[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-export async function POST(req: Request) {
+async function postHere(req: Request) {
   // WORKER_SECRET, or Modal's own key (lib/gpus.ts)
   if (!(await (await import("@/lib/gpus")).workerCaller(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   const body = (await req.json().catch(() => null)) as { op?: string; keys?: unknown; method?: string } | null;
@@ -23,3 +24,6 @@ export async function POST(req: Request) {
     return Response.json({ error: (e as Error).message }, { status: 502 });
   }
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const POST = scoped(workerWorkspace, postHere);

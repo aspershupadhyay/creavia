@@ -1,10 +1,11 @@
 // Runtime settings for the GPU worker (same secret as the heartbeat): the Hugging Face token (so big downloads aren't
 // rate-limited and your private voice model can load) and which trained voice model to serve as the myvoice engine.
 import { adapterUrl } from "@/lib/voicemodel";
+import { workerWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function getHere(req: Request) {
   // WORKER_SECRET, or Modal's own key (lib/gpus.ts)
   if (!(await (await import("@/lib/gpus")).workerCaller(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   // a model trained from the dashboard (kept in R2) unless MY_VOICE_MODEL points at one on Hugging Face
@@ -15,3 +16,6 @@ export async function GET(req: Request) {
     SENTRY_DSN: process.env.ENGINE_SENTRY_DSN || null },
     { headers: { "Cache-Control": "no-store" } });
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const GET = scoped(workerWorkspace, getHere);

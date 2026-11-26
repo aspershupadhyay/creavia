@@ -9,9 +9,12 @@ export async function POST(req: Request) {
   // WORKER_SECRET, CRON_SECRET, or GitHub's OIDC token for sweep.yml (lib/cronauth.ts: no secret to copy into GitHub)
   if (!(await (await import("@/lib/cronauth")).cronAuthed(req))) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
+    // the backup is the service's (the whole database, and every workspace's models: lib/backup.ts)
     const out = await (await import("@/lib/backup")).nightly(200_000);
-    // then the bucket is cleared of what nothing needs any more (lib/janitor.ts), once a day
-    const cleaned = await (await import("@/lib/janitor")).nightlyClean().catch((e) => ({ error: (e as Error).message }));
+    // then each workspace's files are cleared of what nothing needs any more (lib/janitor.ts), once a day
+    const { forEachWorkspace, oneOrAll } = await import("@/lib/workspaces");
+    const nightlyClean = (await import("@/lib/janitor")).nightlyClean;
+    const cleaned = oneOrAll(await forEachWorkspace(() => nightlyClean(), 60_000)) as Record<string, unknown> | null;
     return Response.json(out || cleaned ? { ...(out ?? {}), ...(cleaned ? { cleaned } : {}) } : { idle: true });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 502 });

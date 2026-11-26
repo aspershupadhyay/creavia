@@ -3,6 +3,7 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { buildServer } from "@/lib/auto/endpoint";
 import { verifyMcp, withKeyHeader } from "@/lib/auto/auth";
+import { mcpWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -14,4 +15,6 @@ const handler = createMcpHandler(async (server) => { await buildServer(server, "
 
 const authed = withKeyHeader(withMcpAuth(handler, verifyMcp, { required: true }));
 
-export { authed as GET, authed as POST, authed as DELETE };
+// every call runs in the workspace the caller's key or token names (lib/bound.ts)
+const inWorkspace = scoped(mcpWorkspace, authed);
+export { inWorkspace as GET, inWorkspace as POST, inWorkspace as DELETE };

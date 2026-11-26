@@ -6,6 +6,8 @@ import { createHash, createHmac } from "node:crypto";
 import { b2On, copyObj, delObjs, getObj, headObj, listB2, listR2, presign, putObj } from "./store";
 import { safeEqual } from "./worker";
 import { workspaceId } from "./tenant";
+import { bindTo, readBound, signedText } from "./bound";
+import { FOUNDING } from "./tenant";
 
 
 
@@ -17,8 +19,12 @@ const secret = () => {
   if (s.length < 16) throw new Error("Set MCP_TOKEN on Vercel first.");
   return s;
 };
-export const fileSig = (key: string) => createHmac("sha256", secret()).update(`voicebox-file-v1:${key}`).digest("base64url");
-export const sigOk = (key: string, sig: string) => SERVABLE.test(key) && safeEqual(sig, fileSig(key));
+/** The token for a file of workspace w: its HMAC covers the workspace too (the first workspace's is as it always was). */
+export const fileSig = (key: string, w = FOUNDING) =>
+  bindTo(w, createHmac("sha256", secret()).update(signedText(w, `voicebox-file-v1:${key}`)).digest("base64url"));
+/** Is this the token for that file? Checked against the workspace the token names, so another workspace's id in it
+ *  fails. */
+export const sigOk = (key: string, sig: string) => SERVABLE.test(key) && safeEqual(sig, fileSig(key, readBound(sig).workspace));
 
 const safeName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 120) || "file";
 export const mediaKey = (fileId: string, name: string) => `workspace/media/${fileId}/${safeName(name)}`;

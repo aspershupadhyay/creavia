@@ -88,6 +88,11 @@ function ticket(nonce: string, exp: number) { const body = `${exp}.${nonce}`; re
 
 /** /api/kaggle/boot: the worker's secret for a valid, unused ticket of the start in flight; null otherwise. */
 export async function redeemTicket(t: string): Promise<string | null> {
+  // only the first workspace starts Kaggle (startKaggle): its start record is there
+  const { asWorkspace, FOUNDING } = await import("./tenant");
+  return asWorkspace(FOUNDING, () => redeemHere(t));
+}
+async function redeemHere(t: string): Promise<string | null> {
   const [exp, nonce, mac] = String(t).split(".");
   if (!exp || !nonce || !mac || Number(exp) < Date.now()) return null;
   const want = sign(`${exp}.${nonce}`);
@@ -126,6 +131,7 @@ runpy.run_path(HOME + "/app/launcher.py", run_name="__main__")
 
 /** Start the Kaggle notebook (a new run of it), unless it's on, booting, off in Settings or past the week's cap. */
 export async function startKaggle(origin: string, by = "the studio", force = false) {
+  await (await import("./tenant")).onlyFirstWorkspace("Kaggle GPUs");
   if (!kaggleConfigured()) throw new Error("Kaggle isn't set up: add KAGGLE_USERNAME and KAGGLE_API_TOKEN on the Worker (Settings → GPU & engines → Kaggle).");
   const { getPrefs, gpuState } = await import("./gpus");
   const [p, s] = await Promise.all([getPrefs(), gpuState()]);

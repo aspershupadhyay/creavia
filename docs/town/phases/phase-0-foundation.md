@@ -43,7 +43,10 @@ tool registry, Home, and the slow outside approvals started.
         every query in `lib/db.ts` scoped; the session names its workspace; isolation tests on a real Postgres in CI
   - [x] Slice 2a, stored files: every key under its workspace's prefix in `lib/store.ts` (settings and state files
         included), shared service keys, in-memory caches per workspace; isolation tests on the bucket
-  - [ ] Slice 2b: cron, GPU callbacks, webhooks, MCP keys, public media links and the janitor in explicit workspaces
+  - [x] Slice 2b part 1: every key, token and link names its workspace and works only there (`lib/bound.ts`); MCP,
+        GPU workers, uploads and shared links run in it; cron, backup and janitor per workspace
+  - [x] Slice 2b part 2: Auto-DM per workspace (its four tables, the Instagram webhook by the account's owner,
+        tracked links)
   - [ ] Slice 4: row-level security and the full isolation sweep (routes, MCP tools, file links)
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
       Slice 3 of the same spec; needs slice 2 first (sign-up creates workspaces).
@@ -52,11 +55,14 @@ tool registry, Home, and the slow outside approvals started.
 - [ ] **Tool registry:** every existing action as a named tool with a permission level (read / make / change / act),
       grouped by house; screens move to call tools.
 - [ ] **The new frame:** sidebar with the ten items, + New, the Vee panel shell, Cmd/Ctrl K, in the Creavia design
-      system (Stage 5).
+      system (Stage 5). The **Ask Vee box** is the front door on Home and the same box as ⌘K (stages/04-ux.md, pattern 1).
+- [ ] **Onboarding, "helpful from hello":** sign up → Meet Vee → connect → a first creator profile from the last 30
+      posts → three first wins → a morning brief (stages/04-ux.md, "The first ten minutes").
 - [ ] **Home, today:** posting today, waiting comments/DMs, last post's result.
 - [ ] **AI providers (BYOK):** the provider layer, adding a key, picking provider and model, the key test, per-task
       cost; local models via Ollama / LM Studio.
-- [ ] **Tasks foundation:** the task object (brief, owner, due, status, timeline) that people and agents share.
+- [ ] **Tasks foundation:** the task object (brief, owner, due, status, timeline) that people and agents share; every
+      result shown as a first-person outcome card waiting for OK (stages/04-ux.md, pattern 5).
 - [ ] **Metering:** AI calls, GPU minutes and storage counted per workspace.
 - [ ] **Outside:** domain, registered business, privacy/terms/data-deletion pages; Google verification and Meta App
       Review submitted.

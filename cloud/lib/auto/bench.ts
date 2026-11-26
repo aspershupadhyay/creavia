@@ -19,8 +19,9 @@ const SAVE_KEY = (id: string) => `auto/bench/${id}.json`;
 
 /** A key for code mode (import voicebox): a run token that lasts as long as the run plus 10 minutes, carrying the
  *  model's name for the call log. The MCP route accepts it like an OAuth access token. */
-export function runKey(model: string, seconds: number, role?: string) {
-  return sign({ typ: "run", model: model.slice(0, 60), ...(role ? { role } : {}), exp: Math.floor(Date.now() / 1000) + seconds + 600 });
+export async function runKey(model: string, seconds: number, role?: string) {
+  const w = await (await import("../tenant")).workspaceId(); // a script works in its caller's workspace
+  return sign({ typ: "run", model: model.slice(0, 60), ...(role ? { role } : {}), w, exp: Math.floor(Date.now() / 1000) + seconds + 600 });
 }
 
 export async function submit(body: Record<string, unknown>, opts: { model: string; folder?: string | null; label?: string }) {

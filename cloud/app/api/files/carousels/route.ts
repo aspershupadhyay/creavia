@@ -10,6 +10,7 @@ import { carouselDetail, carouselList, changeCarousel } from "@/lib/filemanager"
 import { joinMany, ungroupCarousel, POST_GROUP_RE } from "@/lib/carousels";
 import { uploadKeyOk } from "@/lib/inbox";
 import { currentUser, isAuthed } from "@/lib/session";
+import { uploadKeyWorkspace, scoped } from "@/lib/bound";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ type Out = { items?: { url?: string | null }[] };
 const shown = <T,>(c: T, key: boolean): T => (key && c && (c as Out).items ? { ...c, items: (c as Out).items!.map(({ url: _, ...i }) => i) } : c);
 const fail = (e: unknown) => Response.json({ error: (e as Error).message }, { status: (e as { status?: number }).status ?? 400 });
 
-export async function GET(req: Request) {
+async function getHere(req: Request) {
   const actor = await who(req);
   if (!actor) return Response.json({ error: "unauthorized" }, { status: 401 });
   const q = new URL(req.url).searchParams;
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
   } catch (e) { return fail(e); }
 }
 
-export async function POST(req: Request) {
+async function postHere(req: Request) {
   const actor = await who(req);
   if (!actor) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
@@ -51,3 +52,7 @@ export async function POST(req: Request) {
     return Response.json(r.ungrouped ? r : shown(await carouselDetail(r.id).catch(() => r), actor.key));
   } catch (e) { return fail(e); }
 }
+
+// run in the workspace the caller's key names (lib/bound.ts)
+export const GET = scoped(uploadKeyWorkspace, getHere);
+export const POST = scoped(uploadKeyWorkspace, postHere);
