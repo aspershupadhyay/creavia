@@ -3,6 +3,7 @@
 // id or account it is given, an Instagram account belongs to one workspace, and a tracked link names its own.
 // Needs TEST_DATABASE_URL; it runs in its own Postgres schema, so it never meets test/workspaces.test.ts's tables.
 import pg from "pg";
+import { pgClient } from "./pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureSchema, useClient } from "@/lib/db";
 import { SCHEMA } from "@/lib/schema";
@@ -21,7 +22,7 @@ describe.skipIf(!URL_)("Auto-DM per workspace (Postgres)", () => {
     pool = new pg.Pool({ connectionString: URL_, max: 1, options: `-c search_path=${SPACE}` });
     await q(`drop schema if exists ${SPACE} cascade`);
     await q(`create schema ${SPACE}`);
-    useClient({ query: q });
+    useClient(pgClient(pool));
   });
   afterAll(async () => {
     useClient(null);
@@ -39,7 +40,7 @@ describe.skipIf(!URL_)("Auto-DM per workspace (Postgres)", () => {
     const before = SCHEMA.findIndex((s) => s.startsWith("CREATE TABLE IF NOT EXISTS autodm_messages"));
     for (const stmt of SCHEMA.slice(0, before)) await q(stmt);
     await q("insert into autodm_events (account, kind, ref, status) values ('acct', 'comment', 'c1', 'sent')");
-    useClient({ query: q });
+    useClient(pgClient(pool));
     await ensureSchema();
     expect(await q("select workspace_id from autodm_events")).toEqual([{ workspace_id: FOUNDING }]);
     await expect(q("insert into autodm_leads (account, from_id, email) values ('a', 'b', 'c@d.e')")).rejects.toThrow(
@@ -54,7 +55,7 @@ describe.skipIf(!URL_)("Auto-DM per workspace (Postgres)", () => {
       "insert into autodm_events (account, kind, ref, status, workspace_id) values ('acct', 'comment', 'c1', 'sent', $1)",
       [A],
     );
-    useClient({ query: q });
+    useClient(pgClient(pool));
     await ensureSchema(); // runs again safely
     forgetCount();
   });

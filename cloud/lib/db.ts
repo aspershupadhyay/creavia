@@ -4,6 +4,7 @@
 // (Appwrite held these until 2026-10-31: docs/MIGRATION.md.)
 // Every row belongs to one workspace: each read, write and live query here is scoped to lib/tenant.ts's answer, so no
 // caller can reach another workspace's rows, whatever id it sends (docs/town/prd/foundation-workspaces-accounts.md).
+import { AsyncLocalStorage } from "node:async_hooks";
 import { neon } from "@neondatabase/serverless";
 import { setResolvers, workspaceId } from "./tenant";
 import { fromPg } from "./workspace";
@@ -16,18 +17,76 @@ export class DataError extends Error {
 const URL_ = () => process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL || "";
 export const hasDb = () => !!URL_();
 
-/** What this file needs from a Postgres client: a query with $1… values, answered with rows. */
-export type SqlClient = { query: (text: string, values?: unknown[]) => Promise<unknown> };
+/** What this file needs from a Postgres client: a query with $1… values, answered with rows; and several queries as one
+ *  transaction (the row lock below needs it). */
+export type SqlClient = {
+  query: (text: string, values?: unknown[]) => Promise<unknown>;
+  transaction?: (queries: { text: string; values?: unknown[] }[]) => Promise<unknown[]>;
+};
 let client: SqlClient | null = null;
+let locked: SqlClient | null = null;
+/** The database, with the row lock on (below). */
 export function sql(): SqlClient {
-  if (client) return client;
-  if (!hasDb()) throw new Error("The database is not configured (DATABASE_URL_POOLED).");
-  return (client = neon(URL_()) as unknown as SqlClient);
+  if (locked) return locked;
+  if (!client) {
+    if (!hasDb()) throw new Error("The database is not configured (DATABASE_URL_POOLED).");
+    const n = neon(URL_());
+    client = {
+      query: (text, values) => n.query(text, values ?? []),
+      transaction: (qs) => n.transaction((tx) => qs.map((q) => tx.query(q.text, q.values ?? []))),
+    };
+  }
+  return (locked = withRowLock(client));
 }
 /** Tests: talk to a local Postgres instead of Neon. */
 export function useClient(c: SqlClient | null) {
   client = c;
+  locked = null;
+  lockReady = null;
   schema = null;
+}
+
+// ── the second lock (db/009_row_security.sql; PRD slice 4)
+// Every query that touches a workspace table runs as the role creavia_workspace in a transaction that first names the
+// request's workspace, so Postgres itself returns and accepts only that workspace's rows: a query that forgets its
+// "workspace_id = $w" still can't reach another's. No workspace (a caller with nobody named): nothing. Work for the
+// whole service (making the tables, the nightly backup, the retention clean-up) says so with asService.
+const WORKSPACE_TABLES = /\b(posts|comments|activity|media|autodm_events|autodm_leads|autodm_messages|autodm_people)\b/i;
+const service = new AsyncLocalStorage<true>();
+/** Runs fn as the service as a whole, outside the row lock: only for work that is about every workspace at once. */
+export const asService = <T>(fn: () => Promise<T>): Promise<T> => service.run(true, fn);
+
+let lockReady: Promise<boolean> | null = null;
+/** Is the lock's role there for this connection? Asked once per server instance; without it the lock stays off and
+ *  says so (the app scopes every query by workspace either way). */
+function lockOn(raw: SqlClient) {
+  return (lockReady ??= raw
+    .query("select pg_has_role(current_user, 'creavia_workspace', 'MEMBER') as ok where exists (select 1 from pg_roles where rolname = 'creavia_workspace')")
+    .then((r) => {
+      const ok = (r as { ok: boolean }[])[0]?.ok === true;
+      if (!ok) console.warn("row lock off: the database has no creavia_workspace role (db/009_row_security.sql)");
+      return ok;
+    })
+    .catch(() => {
+      lockReady = null;
+      return false;
+    }));
+}
+
+function withRowLock(raw: SqlClient): SqlClient {
+  return {
+    ...raw,
+    query: async (text, values) => {
+      if (!raw.transaction || service.getStore() || !WORKSPACE_TABLES.test(text) || !(await lockOn(raw))) return raw.query(text, values);
+      const w = await workspaceId().catch(() => ""); // none: the lock lets nothing through
+      const out = await raw.transaction([
+        { text: "select set_config('app.workspace', $1, true)", values: [w] },
+        { text: "set local role creavia_workspace" },
+        { text, values },
+      ]);
+      return out[2];
+    },
+  };
 }
 
 setResolvers({
@@ -44,7 +103,9 @@ export function ensureSchema() {
   return (schema ??= (async () => {
     const { SCHEMA } = await import("./schema");
     const q = sql();
-    for (const stmt of SCHEMA) await q.query(stmt);
+    // the tables themselves are the service's (the lock's role can't make them)
+    await asService(async () => { for (const stmt of SCHEMA) await q.query(stmt); });
+    lockReady = null; // the lock's role may be new: ask again
   })().catch((e) => { schema = null; throw e; }));
 }
 

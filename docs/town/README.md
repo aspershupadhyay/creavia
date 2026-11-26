@@ -49,7 +49,9 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
   email before the workspace can be used. Everyone already in the studio stays an owner.
 - **Each workspace runs itself** (slice 3b part 2, 2026-11-26): its own sign-in log, "sign out everywhere" and GPU worker
   key, so Colab works in every workspace.
-- **Next:** slice 4 (row-level security and the isolation sweep over every route), then the account screens; the owner's setup of
+- **A second lock** (slice 4, 2026-11-26): Postgres itself keeps each workspace's rows to that workspace (row-level
+  security), and a sweep calls every MCP tool with another workspace's ids. Workspaces and accounts are done.
+- **Next:** the account screens with the Phase 0 UX; the owner's setup of
   staging and retesting live updates run alongside (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.

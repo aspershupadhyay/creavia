@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** slices 1 to 3 done (2026-11-26); slice 4 (row-level security and the full isolation sweep) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** done, slices 1 to 4 (2026-11-26); the screens for accounts come with the Phase 0 UX · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem
@@ -142,5 +142,18 @@ Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test 
        only to its own workspace. So Colab, on each workspace's own Google account, now works in every workspace.
      - *Still the first workspace's only:* Kaggle and GPU deploys from GitHub run on the studio's own accounts
        (`KAGGLE_USERNAME`, its repository), so another workspace would spend its hours; they say so plainly.
-4. **Second lock and the full sweep:** row-level security, and the isolation sweep over every route, MCP tool and file
-   link with another workspace's ids.
+4. **Second lock and the full sweep (done):**
+   - *Row-level security* (`db/009_row_security.sql`, `lib/db.ts`): every workspace table (posts, comments, activity,
+     media and Auto-DM's four) has a policy for the role `creavia_workspace`: it sees and writes only rows of the
+     workspace named for its transaction, and nothing when none is. The studio runs each query on these tables as
+     that role, in one transaction that first names the request's workspace, so a query that forgets its
+     `workspace_id = $w` still can't reach another workspace. Making the tables, the nightly backup and the
+     retention clean-up are the service's own (`asService`). Other roles keep what they had (the owner isn't subject
+     to row security; Neon Realtime's live board reads as before). Where the database can't make roles the lock stays
+     off and the server says so; the app's own scoping holds either way.
+   - *The sweep* (`test/isolation-sweep.test.ts`): every MCP tool (92) is called from one workspace with another's
+     real ids in every id-like argument; none may show that workspace's content or change its rows. A control from
+     the owning workspace must find its content, so the sweep reaches real data. Removing a workspace filter and the
+     lock together makes it fail; removing the filter alone doesn't, which is the lock doing its job. Routes, file
+     links and keys are covered by the earlier slices' tests (`workspaces`, `storage`, `bound`, `autodm-workspaces`,
+     `accounts`) and the signed-out sweep of every route.

@@ -2,8 +2,20 @@
 // no read, write or delete in lib/db.ts can reach another workspace's rows, whatever id it is given. Needs
 // TEST_DATABASE_URL (a throwaway database: every run wipes it); CI starts one (checks.yml), and it fails there without it.
 import pg from "pg";
+import { pgClient } from "./pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { deleteRow, ensureSchema, getRow, insertRow, listRows, patchRow, toSql, useClient } from "@/lib/db";
+import {
+  asService,
+  deleteRow,
+  ensureSchema,
+  getRow,
+  insertRow,
+  listRows,
+  patchRow,
+  sql,
+  toSql,
+  useClient,
+} from "@/lib/db";
 import { isMember, joinWorkspace, leaveWorkspace, forget as forgetMembers, workspaceMembers } from "@/lib/memberships";
 import { asWorkspace, FOUNDING, forgetCount, NoWorkspace, workspaceId } from "@/lib/tenant";
 
@@ -19,7 +31,7 @@ const q = async (text: string, values?: unknown[]) => (await pool.query(text, va
 describe.skipIf(!URL_)("workspaces (Postgres)", () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: URL_, max: 2 });
-    useClient({ query: q });
+    useClient(pgClient(pool));
   });
   afterAll(async () => {
     useClient(null);
@@ -30,7 +42,7 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
     // a fresh database each test: the real migrations (lib/schema.ts, from db/*.sql), as a new studio makes them
     await q("drop schema public cascade");
     await q("create schema public");
-    useClient({ query: q });
+    useClient(pgClient(pool));
     await ensureSchema();
     forgetCount();
     forgetMembers();
@@ -54,7 +66,7 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
       await q(`insert into memberships (workspace_id, user_id, role, created_at) values
         ('w_founding', 'o1', 'owner', '2026-11-01'), ('w_founding', 'o2', 'member', '2026-11-02'), ('w_founding', 'o3', 'member', now())`);
       await q("delete from schema_once where name = 'founding_owners'"); // as on a studio from before 007
-      useClient({ query: q });
+      useClient(pgClient(pool));
       await ensureSchema();
       expect(await q("select user_id, role from memberships order by user_id")).toEqual([
         { user_id: "o1", role: "owner" },
@@ -63,14 +75,14 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
       ]);
       // once only: someone made a member later stays one
       await q("update memberships set role = 'member' where user_id = 'o2'");
-      useClient({ query: q });
+      useClient(pgClient(pool));
       await ensureSchema();
       expect(await q("select role from memberships where user_id = 'o2'")).toEqual([{ role: "member" }]);
     });
 
     it("makes the first workspace and runs again safely", async () => {
       await ensureSchema(); // already made in beforeEach: a second run changes nothing
-      useClient({ query: q });
+      useClient(pgClient(pool));
       await ensureSchema();
       expect(await q("select id, key_prefix from workspaces")).toEqual([{ id: FOUNDING, key_prefix: "" }]);
     });
@@ -83,7 +95,7 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
       const fresh = async () => {
         await q("drop schema public cascade");
         await q("create schema public");
-        useClient({ query: q });
+        useClient(pgClient(pool));
       };
       await fresh();
       // the studio as it was before workspaces: the first four migrations, a team, and a post
@@ -93,7 +105,7 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
         ('u1', 'old@x.test', 'Old', true, now() - interval '1 day'), ('u2', 'new@x.test', 'New', true, now()),
         ('u3', 'gone@x.test', 'Gone', false, now())`);
       await q("insert into posts (id, title) values ('p1', 'before workspaces')");
-      useClient({ query: q });
+      useClient(pgClient(pool));
       await ensureSchema();
       expect(await q("select user_id, role from memberships order by user_id")).toEqual([
         { user_id: "u1", role: "owner" },
@@ -102,7 +114,7 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
       expect(await q("select workspace_id from posts")).toEqual([{ workspace_id: FOUNDING }]);
       // an account made later is not swept in by the next start
       await q("insert into users (id, email, name, member) values ('u4', 'later@x.test', 'Later', true)");
-      useClient({ query: q });
+      useClient(pgClient(pool));
       await ensureSchema();
       expect((await q("select user_id from memberships")).length).toBe(2);
     });
@@ -178,6 +190,58 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
       await twoWorkspaces();
       await expect(listRows("posts", [])).rejects.toBeInstanceOf(NoWorkspace);
       await expect(insertRow("posts", { title: "t" })).rejects.toBeInstanceOf(NoWorkspace);
+    });
+  });
+
+  describe("the second lock: row-level security (slice 4)", () => {
+    const raw = (text: string, values?: unknown[]) => sql().query(text, values) as Promise<Record<string, unknown>[]>;
+    const seed = async () => {
+      await twoWorkspaces();
+      await asWorkspace(A, () => insertRow("posts", { title: "Alpha's plan" }));
+      await asWorkspace(B, () => insertRow("posts", { title: "Bravo's plan" }));
+    };
+
+    it("is on: the role exists and the studio's connection can take it", async () => {
+      expect(await q("select pg_has_role(current_user, 'creavia_workspace', 'MEMBER') ok")).toEqual([{ ok: true }]);
+      expect(
+        await q(
+          "select count(*)::int n from pg_policies where policyname = 'workspace_only' and schemaname = current_schema()",
+        ),
+      ).toEqual([{ n: 8 }]);
+    });
+
+    it("a query that forgets its workspace filter still sees only its own workspace's rows", async () => {
+      await seed();
+      expect((await asWorkspace(A, () => raw("select title from posts"))).map((r) => r.title)).toEqual([
+        "Alpha's plan",
+      ]);
+      expect((await asWorkspace(B, () => raw("select title from posts"))).map((r) => r.title)).toEqual([
+        "Bravo's plan",
+      ]);
+      // and can't change or delete another workspace's, whatever it asks for
+      await asWorkspace(A, () => raw("update posts set title = 'taken over'"));
+      await asWorkspace(A, () => raw("delete from posts where title = 'Bravo''s plan'"));
+      expect((await asWorkspace(B, () => raw("select title from posts"))).map((r) => r.title)).toEqual([
+        "Bravo's plan",
+      ]);
+    });
+
+    it("refuses a row written for another workspace", async () => {
+      await seed();
+      await expect(
+        asWorkspace(A, () => raw("insert into posts (id, title, workspace_id) values ('p-x', 'smuggled', $1)", [B])),
+      ).rejects.toThrow(/row-level security/);
+    });
+
+    it("lets nothing through with no workspace named, and only the service sees every workspace", async () => {
+      await seed();
+      forgetCount();
+      // no person and two workspaces: the request has no workspace, so the lock gives it nothing
+      expect(await raw("select title from posts").catch(() => "refused")).toEqual([]);
+      expect((await asService(() => raw("select title from posts order by title"))).map((r) => r.title)).toEqual([
+        "Alpha's plan",
+        "Bravo's plan",
+      ]);
     });
   });
 

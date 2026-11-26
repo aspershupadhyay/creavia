@@ -35,7 +35,7 @@ tool registry, Home, and the slow outside approvals started.
 - [ ] **Ports and adapters:** storage, database, realtime, queues, email, payments and AI behind `cloud/lib/ports/`, so
       Creavia stays portable ([../self-hosting.md](../self-hosting.md)) and testable.
 - [ ] **Translation layer** for every user-facing string, English first.
-- [ ] **Workspaces:** a `workspace_id` on every row (posts, comments, files, voices, connections, settings, jobs) and
+- [x] **Workspaces:** a `workspace_id` on every row (posts, comments, files, voices, connections, settings, jobs) and
       every R2/B2 key prefix; one place that sets it per request; Postgres row-level security as a second lock.
       Spec: [../prd/foundation-workspaces-accounts.md](../prd/foundation-workspaces-accounts.md) (four slices).
   - [x] Slice 1, the database: `workspaces`, `memberships`, `invites`; `workspace_id` on posts, comments, activity and
@@ -47,7 +47,7 @@ tool registry, Home, and the slow outside approvals started.
         GPU workers, uploads and shared links run in it; cron, backup and janitor per workspace
   - [x] Slice 2b part 2: Auto-DM per workspace (its four tables, the Instagram webhook by the account's owner,
         tracked links)
-  - [ ] Slice 4: row-level security and the full isolation sweep (routes, MCP tools, file links)
+  - [x] Slice 4: row-level security (a second lock in Postgres) and the isolation sweep over every MCP tool
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
       Slice 3 of the same spec.
   - [x] Slice 3a (API): sign-up into a workspace of one's own with `OPEN_SIGNUP` (off: invite-only, as today),

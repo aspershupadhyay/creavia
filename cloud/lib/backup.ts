@@ -71,11 +71,12 @@ export async function backupStream(key: string, size: number, read: (start: numb
 
 /** The four tables as one gzipped JSON, the last 14 kept. */
 export async function dumpDb(day: string) {
-  const { sql } = await import("./db");
+  const { asService, sql } = await import("./db");
   const rows: Record<string, number> = {};
   const data: Record<string, unknown[]> = {};
+  // the whole database, every workspace's rows: the service's own copy (outside the row lock, lib/db.ts)
   for (const t of ["posts", "comments", "activity", "media"]) {
-    data[t] = (await sql().query(`select * from ${t} order by created_at`)) as unknown[];
+    data[t] = (await asService(() => sql().query(`select * from ${t} order by created_at`))) as unknown[];
     rows[t] = data[t].length;
   }
   const bytes = gzipSync(JSON.stringify({ at: new Date().toISOString(), tables: data }));
@@ -148,8 +149,9 @@ export async function nightly(ms = 120_000) {
 
 /** The activity feed keeps a year. */
 async function pruneActivity() {
-  const { sql } = await import("./db");
-  const r = (await sql().query("delete from activity where created_at < now() - interval '1 year' returning id")) as unknown[];
+  const { asService, sql } = await import("./db");
+  // every workspace's at once: the service's retention, outside the row lock (lib/db.ts)
+  const r = (await asService(() => sql().query("delete from activity where created_at < now() - interval '1 year' returning id"))) as unknown[];
   return r.length;
 }
 

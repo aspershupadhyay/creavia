@@ -4,7 +4,7 @@
 // at the same moment. Emails people send are in autodm_leads.
 // Every row is one workspace's (db/006_autodm_workspaces.sql): each query reads and writes only the workspace this
 // request runs in (lib/tenant.ts), which for Instagram's webhook is the one that connected the account (lib/publish/owners.ts).
-import { ensureSchema, sql } from "../db";
+import { asService, ensureSchema, sql } from "../db";
 import { workspaceId } from "../tenant";
 
 let ready: Promise<void> | null = null;
@@ -45,14 +45,15 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS autodm_meta (v integer NOT NULL)",
 ];
 export function ensure() {
-  return (ready ??= (async () => {
+  // the tables are the service's: made outside the row lock (lib/db.ts)
+  return (ready ??= asService(async () => {
     const v = await sql().query("select max(v) v from autodm_meta", []).then((r) => Number((r as { v: number | null }[])[0]?.v ?? 0)).catch(() => 0);
     if (v >= VERSION) return;
     await ensureSchema(); // db/*.sql first: 006 gives these tables their workspace (and makes account_owners)
     for (const q of SCHEMA) await sql().query(q, []);
     await sql().query("delete from autodm_meta", []);
     await sql().query("insert into autodm_meta (v) values ($1)", [VERSION]);
-  })().catch((e) => { ready = null; throw e; }));
+  }).catch((e) => { ready = null; throw e; }));
 }
 
 export type DmStatus = "pending" | "sent" | "gated" | "held" | "failed" | "skipped" | "hidden" | "deleted" | "flagged" | "dismissed";
