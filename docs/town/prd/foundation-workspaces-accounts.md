@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** done, slices 1 to 4 (2026-11-26); the screens for accounts come with the Phase 0 UX · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** done, slices 1 to 4 and the screens (2026-11-26): `/login` and `/account`, in Creavia's own design · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem

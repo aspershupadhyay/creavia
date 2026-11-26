@@ -8,6 +8,11 @@
 - **Colours:** matte black and warm cream; **marigold `#FFB627`** (`--brand`) is the one accent, for the main action on
   a screen and progress. No purple, indigo or blue-to-violet "AI" gradients. Category tints (peach, sky, mint, rose,
   lavender, sand) only as soft tile backgrounds.
+- **Creavia's own screens** (`cloud/creavia/`, everything under the `.cv` class): the start of the new design system
+  (docs/town/stages/05-visual-design.md). Tokens `--cv-*`, marigold for the one primary action (`.cv-btn.cv-primary`),
+  cream ink, segmented choices instead of selects, notes with a coloured edge. Nothing from `cloud/components` or
+  `globals.css` is used there, and `.cv` resets VoiceBox's global button and code rules. First users: `/login`
+  (`Gate.tsx`) and `/account` (`Team.tsx`).
 - **Desktop pages** (`desktop/src/pages`, `styles/creavia.css`, classes `cr-*`) use the studio's tokens and components
   (`PageHeader`, buttons, `.seg`); macOS draws its window buttons over the sidebar's top (`--mac-bar`).
 

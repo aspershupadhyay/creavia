@@ -41,6 +41,8 @@ export default function SecurityCard({ part }: { part?: "people" | "device" | "l
       <div className="card-head"><h2><ShieldCheck size={17} /> {part ? "Who can sign in" : "Security"}</h2>
         <span className="row" style={{ gap: 4 }}><span className="pill ok"><CheckCircle size={12} weight="fill" /> Invite-only</span>
           <Info label="Security">Only the people below can sign in. Removing someone locks them out within a minute, on every device.</Info></span></div>
+      {/* the bridge to Creavia's own account screens (app/account): roles, invites and switching live there */}
+      <p className="sub" style={{ marginTop: 4 }}><a className="u" href="/account">Workspace and team</a>: invite people, set who's an owner, switch workspace.</p>
 
       <div className="stack" style={{ gap: 0, marginTop: 8 }}>
         {(d?.people ?? []).map((p) => (

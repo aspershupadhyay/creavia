@@ -48,7 +48,7 @@ tool registry, Home, and the slow outside approvals started.
   - [x] Slice 2b part 2: Auto-DM per workspace (its four tables, the Instagram webhook by the account's owner,
         tracked links)
   - [x] Slice 4: row-level security (a second lock in Postgres) and the isolation sweep over every MCP tool
-- [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
+- [x] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
       Slice 3 of the same spec.
   - [x] Slice 3a (API): sign-up into a workspace of one's own with `OPEN_SIGNUP` (off: invite-only, as today),
         invites (hashed, 7 days, once, for one email), owner-only invites, removals and roles, switching workspace
@@ -56,7 +56,9 @@ tool registry, Home, and the slow outside approvals started.
         studio's people before roles became owners
   - [x] Slice 3b part 2: sign-in log and "sign out everywhere" per workspace, a worker key per workspace (Colab in
         every workspace; Kaggle and GitHub deploys stay the studio's own)
-  - [ ] The screens for these (Creavia's own: sign-up, invite, team, switcher), with the Phase 0 UX
+  - [x] The screens, in Creavia's own design (`cloud/creavia/`): sign in, create an account, check your email,
+        forgot and reset password, accept an invite (`/login`); workspace and team, with switching, roles, invites and
+        removing people (`/account`)
 - [ ] **The app connects by itself:** the service address built in; "Sign in" / "Create account"; self-hosting stays
       as an advanced option.
 - [ ] **Tool registry:** every existing action as a named tool with a permission level (read / make / change / act),
