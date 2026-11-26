@@ -26,12 +26,15 @@ export async function listMembers(): Promise<Member[]> {
   return (await workspaceMembers(await workspaceId())).map(({ id, name, email }) => ({ id, name, email }));
 }
 
-/** Take someone off the team (Settings → Security): out of this workspace, and off the studio's sign-in list. Their
- *  next request is refused (lib/session.ts). */
+/** Take someone out of this workspace (Settings → Security; owners only, lib/memberships.ts requireOwner): in the first
+ *  workspace that is also off the studio's sign-in list. Their next request there is refused (lib/session.ts). The last
+ *  owner stays. */
 export async function removeMember(email: string) {
-  const [{ leaveWorkspace }, { workspaceId }] = await Promise.all([import("./memberships"), import("./tenant")]);
-  await leaveWorkspace(email, await workspaceId());
-  return (await import("./users")).setMember(email, false);
+  const [{ lastOwner, leaveWorkspace }, { workspaceId, FOUNDING }] = await Promise.all([import("./memberships"), import("./tenant")]);
+  const w = await workspaceId();
+  if (await lastOwner(email, w)) throw Object.assign(new Error("A workspace needs an owner: make someone else owner first."), { status: 409 });
+  await leaveWorkspace(email, w);
+  return w === FOUNDING ? (await import("./users")).setMember(email, false) : true;
 }
 
 // ── posts

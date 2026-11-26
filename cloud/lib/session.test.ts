@@ -196,9 +196,38 @@ describe("the session's workspace", () => {
     expect(await sessionWorkspace()).toBe("w_founding");
   });
 
-  it("is none for the master key and GitHub sign-ins, which have no person", async () => {
+  it("is the first workspace for the master key and GitHub sign-ins (the self-hoster's), however many exist", async () => {
     await startSession("token", "token");
+    expect(await sessionWorkspace()).toBe("w_founding");
+    github.logins = ["octo"];
+    await startSession("github", "octo");
+    expect(await sessionWorkspace()).toBe("w_founding");
+  });
+
+  it("is none with nobody signed in", async () => {
     expect(await sessionWorkspace()).toBeNull();
+  });
+});
+
+describe("who may be in which workspace (3a)", () => {
+  it("in another workspace, membership is the gate: an account off the studio's list still works there", async () => {
+    members.add("bo@example.com w_bosstudio");
+    await startSession("user", "bo@example.com", undefined, "w_bosstudio");
+    expect(await isAuthed(request())).toBe(true);
+    expect(await sessionWorkspace()).toBe("w_bosstudio");
+  });
+
+  it("the studio's list still gates the first workspace, membership or not", async () => {
+    members.add("bo@example.com w_founding");
+    await startSession("user", "bo@example.com");
+    expect(await isAuthed(request())).toBe(false); // not on the list
+  });
+
+  it("taken out of their own workspace, they're out within the check", async () => {
+    members.add("bo@example.com w_bosstudio");
+    await startSession("user", "bo@example.com", undefined, "w_bosstudio");
+    members.delete("bo@example.com w_bosstudio");
+    expect(await isAuthed(request())).toBe(false);
   });
 });
 

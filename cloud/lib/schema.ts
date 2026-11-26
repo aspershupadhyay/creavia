@@ -54,7 +54,7 @@ export const SCHEMA: string[] = [
   "ALTER TABLE autodm_events DROP CONSTRAINT IF EXISTS autodm_events_account_kind_ref_key",
   "ALTER TABLE autodm_leads DROP CONSTRAINT IF EXISTS autodm_leads_account_from_id_email_key",
   "ALTER TABLE autodm_messages DROP CONSTRAINT IF EXISTS autodm_messages_account_mid_key",
-  "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'autodm_people_pkey' AND pg_get_constraintdef(oid) LIKE '%workspace_id%') THEN ALTER TABLE autodm_people DROP CONSTRAINT IF EXISTS autodm_people_pkey; ALTER TABLE autodm_people ADD PRIMARY KEY (workspace_id, account, psid); END IF; END $$",
+  "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'autodm_people'::regclass AND contype = 'p' AND pg_get_constraintdef(oid) LIKE '%workspace_id%') THEN ALTER TABLE autodm_people DROP CONSTRAINT IF EXISTS autodm_people_pkey; ALTER TABLE autodm_people ADD PRIMARY KEY (workspace_id, account, psid); END IF; END $$",
   "CREATE INDEX IF NOT EXISTS autodm_events_by_workspace ON autodm_events (workspace_id, at DESC)",
   "CREATE INDEX IF NOT EXISTS autodm_leads_by_workspace ON autodm_leads (workspace_id, at DESC)",
   "CREATE INDEX IF NOT EXISTS autodm_people_by_workspace ON autodm_people (workspace_id, updated_at DESC)"

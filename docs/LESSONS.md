@@ -3,6 +3,18 @@
 Every bug that reached `main` or a release: what happened, why, what now catches it, and the rule that changed.
 Newest first. Read the entries for an area before working in it (docs/ENGINEERING.md, step 7).
 
+## 2026-11-26 · Migration 006 found another schema's key and skipped its own
+
+- **What:** `db/006_autodm_workspaces.sql` rebuilds `autodm_people`'s primary key with the workspace in it, but only
+  when the table's key doesn't have it yet. It looked the key up by its name alone, so in a database where another
+  schema already had an `autodm_people_pkey` with the workspace, it skipped this table. Inbox writes then failed with
+  "no unique constraint matching ON CONFLICT". Found when two test files on one Postgres ran side by side; production
+  has one schema, so no studio hit it.
+- **Now caught by:** the Postgres tests (`test/autodm-workspaces.test.ts`, `test/accounts.test.ts`) running in their
+  own schemas side by side. The check now names the table (`conrelid = 'autodm_people'::regclass`).
+- **Rule:** a migration that looks at the catalog (`pg_constraint`, `information_schema`) asks about this table in
+  this schema, never a name alone.
+
 ## 2026-11-14 · The MCP answered every wrong key with a 500, not a 401
 
 - **What:** `/api/mcp` and `/api/mcp/lean` crashed on any refused key instead of answering 401. Found by the new

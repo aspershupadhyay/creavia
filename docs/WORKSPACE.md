@@ -49,6 +49,7 @@ trained voices copied there too (`mcp/lib/backup.ts`).
 | `DATABASE_URL_POOLED` | Worker | Neon's pooled connection string (posts, comments, activity, media, users). |
 | `NEON_REALTIME_URL` / `NEON_REALTIME_SECRET` | Worker | The live board. |
 | `WORKSPACE_EMAILS` | optional | Comma-separated allow-list. |
+| `OPEN_SIGNUP` | optional | `1` on the hosted service: anyone off the list who signs up gets a workspace of their own. Off (default): invite-only. |
 
 Folders, where each file sits and stars are not in the database: they're one small JSON file in R2 (`workspace/files.json`,
 `mcp/lib/files.ts`), read fresh before every change. The page re-reads it every 20 s and when the tab comes back.
