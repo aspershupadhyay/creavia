@@ -6,8 +6,10 @@ import { createHash } from "node:crypto";
 import { getJson, putJson } from "./store";
 
 const FAILS = (ip: string) => `auth/fails/${createHash("sha256").update(`voicebox-ip:${ip}`).digest("hex").slice(0, 24)}.json`;
-const LOG = "auth/log.json";
-const EPOCH = "auth/epoch.json";
+// each workspace's sign-in log and "sign out everywhere" (3b): the first workspace keeps the keys it always had. Under
+// auth/ (lib/store.ts SHARED), so the workspace is named in the key itself, never taken from the request.
+const LOG = (w: string) => (w === "w_founding" ? "auth/log.json" : `auth/ws/${w}/log.json`);
+const EPOCH = (w: string) => (w === "w_founding" ? "auth/epoch.json" : `auth/ws/${w}/epoch.json`);
 const MAX_FAILS = 8, WINDOW = 15 * 60_000;
 
 const envList = () => (process.env.WORKSPACE_EMAILS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -50,7 +52,9 @@ export async function lockedFor(ip: string) {
   return Math.ceil((f.first + WINDOW - Date.now()) / 1000);
 }
 
-export async function noteAttempt(req: Request, ok: boolean, who: string, how: string) {
+/** A sign-in try, in the log of the workspace it landed in (a refused one: the studio's first workspace's, the
+ *  service's own). Failures also count toward the address's lockout. */
+export async function noteAttempt(req: Request, ok: boolean, who: string, how: string, workspace = "w_founding") {
   const ip = clientIp(req);
   if (ok) await putJson(FAILS(ip), { n: 0, first: Date.now() }).catch(() => null);
   else {
@@ -60,25 +64,29 @@ export async function noteAttempt(req: Request, ok: boolean, who: string, how: s
   }
   const masked = ip.includes(":") ? ip.split(":").slice(0, 3).join(":") + ":…" : ip.split(".").slice(0, 3).join(".") + ".…";
   const entry = { at: Date.now(), ok, who: who.slice(0, 120), how, ip: masked, agent: (req.headers.get("user-agent") ?? "").slice(0, 140) };
-  const log = (await getJson<typeof entry[]>(LOG).catch(() => null)) ?? [];
-  await putJson(LOG, [entry, ...log].slice(0, 60)).catch(() => null);
+  const log = (await getJson<typeof entry[]>(LOG(workspace)).catch(() => null)) ?? [];
+  await putJson(LOG(workspace), [entry, ...log].slice(0, 60)).catch(() => null);
 }
 
-export const signInLog = async () => (await getJson<{ at: number; ok: boolean; who: string; how: string; ip: string; agent: string }[]>(LOG).catch(() => null)) ?? [];
+/** A workspace's last sign-ins (Settings → Security). */
+export const signInLog = async (workspace = "w_founding") =>
+  (await getJson<{ at: number; ok: boolean; who: string; how: string; ip: string; agent: string }[]>(LOG(workspace)).catch(() => null)) ?? [];
 
-let epochCache: { at: number; ep: number } | null = null;
+const epochCache = new Map<string, { at: number; ep: number }>();
 
-/** Sessions issued before this moment are void ("sign out everywhere"). Cached 30 s per server instance. */
-export async function sessionEpoch() {
-  if (epochCache && Date.now() - epochCache.at < 30_000) return epochCache.ep;
-  const ep = (await getJson<{ ep: number }>(EPOCH).catch(() => null))?.ep ?? 0;
-  epochCache = { at: Date.now(), ep };
+/** A workspace's sign-ins issued before this moment are void ("sign out everywhere"). Cached 30 s per server instance. */
+export async function sessionEpoch(workspace = "w_founding") {
+  const hit = epochCache.get(workspace);
+  if (hit && Date.now() - hit.at < 30_000) return hit.ep;
+  const ep = (await getJson<{ ep: number }>(EPOCH(workspace)).catch(() => null))?.ep ?? 0;
+  epochCache.set(workspace, { at: Date.now(), ep });
   return ep;
 }
 
-export async function signOutEverywhere() {
+/** Signs everyone out of this workspace (the first workspace's also ends the master key's and GitHub sign-ins). */
+export async function signOutEverywhere(workspace = "w_founding") {
   const ep = Date.now();
-  await putJson(EPOCH, { ep });
-  epochCache = { at: Date.now(), ep };
+  await putJson(EPOCH(workspace), { ep });
+  epochCache.set(workspace, { at: Date.now(), ep });
   return ep;
 }

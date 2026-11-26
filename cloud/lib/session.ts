@@ -61,7 +61,8 @@ async function ticket(): Promise<Ticket | null> {
     // the studio's list gates the first workspace (tickets from before workspaces mean it); in any other workspace the
     // membership below is the gate (docs/town/prd/foundation-workspaces-accounts.md, 3a)
     const needsList = t.k === "user" && (t.w === undefined || t.w === FOUNDING);
-    const [epoch, list] = await Promise.all([sessionEpoch(), needsList ? allowedEmails().catch(() => null) : ([] as string[])]);
+    // "sign out everywhere" of the workspace the ticket works in (the master key and GitHub: the first one)
+    const [epoch, list] = await Promise.all([sessionEpoch(t.k === "user" ? (t.w ?? FOUNDING) : FOUNDING), needsList ? allowedEmails().catch(() => null) : ([] as string[])]);
     if (t.iat < epoch) return null; // signed out everywhere since
     // a password reset since voids this person's older sign-ins (lib/users.ts; no database, no resets)
     if (t.k === "user" && t.iat < (await import("./users").then((u) => u.sessionsAfter(t.sub)).catch(() => 0))) return null;

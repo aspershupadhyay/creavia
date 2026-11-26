@@ -90,13 +90,13 @@ export function perWorkspace<T>() {
   };
 }
 
-/** Things that still belong to the studio as a whole (a GPU that signs in with WORKER_SECRET): allowed only in the
- *  first workspace until each workspace has its own worker key (PRD slice 3). Elsewhere it says so plainly. */
+/** Things that run on the studio's own accounts (Kaggle's KAGGLE_USERNAME, the GitHub repository GPU deploys run in):
+ *  the first workspace's only, since another workspace would spend the studio's hours. Elsewhere it says so plainly. */
 export async function onlyFirstWorkspace(what: string) {
   if ((await workspaceId()) !== FOUNDING)
     throw Object.assign(
       new Error(
-        `${what} are only available in the studio's first workspace for now. Use a cloud GPU (Modal or Cerebrium) with its own key.`,
+        `${what} run on the studio's own account, so only in its first workspace. Use Colab with your own Google account, or a cloud GPU (Modal or Cerebrium) with its own key.`,
       ),
       { status: 403 },
     );

@@ -54,11 +54,12 @@ export function scoped<A extends unknown[]>(
 const bearer = (req: Request) => (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
 
 /** GPU workers: WORKER_SECRET is the first workspace's (it is the self-hosted studio's own secret); a cloud GPU key
- *  (vbmd_) names its workspace. lib/gpus.ts workerCaller then checks the key inside that workspace. */
+ *  (vbmd_) or a workspace's worker key (vbwk_) names its workspace. lib/gpus.ts workerCaller then checks the key inside
+ *  that workspace. */
 export function workerWorkspace(req: Request): string | null {
   const t = bearer(req);
   if (!t) return null;
-  return keyWorkspace("vbmd_", t) ?? FOUNDING;
+  return keyWorkspace("vbmd_", t) ?? keyWorkspace("vbwk_", t) ?? FOUNDING;
 }
 
 /** Upload keys (vbup_) name their workspace; a signed-in browser keeps its session's (null here). */

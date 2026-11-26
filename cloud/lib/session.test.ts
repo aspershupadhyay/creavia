@@ -14,9 +14,9 @@ vi.mock("next/headers", () => ({
 }));
 
 // Who is on the list and when "sign out everywhere" was last pressed: normally read from storage.
-const access = { epoch: 0, emails: [] as string[] | Error };
+const access = { epoch: 0, epochs: {} as Record<string, number>, emails: [] as string[] | Error };
 vi.mock("./access", () => ({
-  sessionEpoch: async () => access.epoch,
+  sessionEpoch: async (w = "w_founding") => access.epochs[w] ?? access.epoch,
   allowedEmails: async () => {
     if (access.emails instanceof Error) throw access.emails;
     return access.emails;
@@ -44,6 +44,7 @@ function request(method = "GET", headers: Record<string, string> = {}) {
 beforeEach(() => {
   jar.clear();
   access.epoch = 0;
+  access.epochs = {};
   access.emails = ["ana@example.com"];
   github.logins = [];
   members.clear();
@@ -206,6 +207,25 @@ describe("the session's workspace", () => {
 
   it("is none with nobody signed in", async () => {
     expect(await sessionWorkspace()).toBeNull();
+  });
+});
+
+describe("sign out everywhere, per workspace (3b)", () => {
+  it("signs out that workspace's people, and nobody else's", async () => {
+    members.add("bo@example.com w_bosstudio");
+    await startSession("user", "bo@example.com", undefined, "w_bosstudio");
+    access.epochs.w_founding = Date.now() + 1000; // the first workspace signed everyone out
+    expect(await isAuthed(request())).toBe(true);
+    access.epochs.w_bosstudio = Date.now() + 1000; // now Bo's own workspace did
+    expect(await isAuthed(request())).toBe(false);
+  });
+
+  it("the first workspace's also ends the master key's sign-in", async () => {
+    await startSession("token", "token");
+    access.epochs.w_bosstudio = Date.now() + 1000;
+    expect(await isAuthed(request())).toBe(true);
+    access.epochs.w_founding = Date.now() + 1000;
+    expect(await isAuthed(request())).toBe(false);
   });
 });
 

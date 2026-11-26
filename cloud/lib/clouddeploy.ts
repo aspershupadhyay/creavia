@@ -69,7 +69,7 @@ export const listDeploys = async () => (await runs()).map(({ id, cloud, by, at, 
 /** Start a deploy: a one-time id, then the workflow, started with the studio's GitHub key. */
 export async function startDeploy(cloud: Cloud, by: string) {
   // the deploy runs from this repository's own workflow with the studio's GitHub key: the self-hosted studio's tool,
-  // so the first workspace's until workspaces each get their own (lib/tenant.ts onlyFirstWorkspace)
+  // so the first workspace's only: it runs on the studio's own repository (lib/tenant.ts onlyFirstWorkspace)
   await (await import("./tenant")).onlyFirstWorkspace("GPU deploys from GitHub");
   const st = await tokensStatus();
   if (!st[cloud].saved) throw new Error(`save ${cloud === "modal" ? "Modal" : "Cerebrium"}'s tokens first`);
