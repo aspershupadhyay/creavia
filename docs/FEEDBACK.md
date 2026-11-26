@@ -4,6 +4,12 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-26: keep the studio's people managing it; open sign-up stays off
+
+- **Promote the people already in the studio, and leave `OPEN_SIGNUP` off in production:** everyone in the first
+  workspace before roles began is an owner (`db/007_founding_owners.sql`); open sign-up is refused unless email is set
+  up to check new addresses, and the deploy config never turns it on (`cloud/test/wrangler.test.ts`).
+
 ## 2026-11-26: handle UI and UX the way Town does, planned
 
 - **"Work on the UI & UX just like Town.com handles, so make it a planned one":** the ask box as the front door, an

@@ -59,6 +59,19 @@ const signUp = (email: string, extra: object = {}) =>
   login({ signup: { name: email.split("@")[0], email, password: "a-good-password" }, ...extra });
 const signIn = (email: string, extra: object = {}) => login({ email, password: "a-good-password", ...extra });
 const tokenOf = (link: unknown) => new URL(String(link)).searchParams.get("invite") ?? "";
+// what the studio emailed (lib/mailer.ts, sent to Resend: caught here), and the link in the newest one to an address
+const mail: { to: string; subject: string; text: string }[] = [];
+const linkIn = (to: string, param: "verify" | "reset") => {
+  const m = [...mail].reverse().find((x) => x.to === to);
+  return new URL((m?.text.match(/https:\/\/\S+/) ?? [""])[0] || "https://x/").searchParams.get(param) ?? "";
+};
+/** Open sign-up as a person does it: the form, then the emailed link. */
+const openSignUp = async (email: string) => {
+  vi.stubEnv("OPEN_SIGNUP", "1");
+  const r = await signUp(email);
+  expect(r.body.verify).toBe(true);
+  return login({ verify: linkIn(email, "verify") });
+};
 const workspaceOf = async (email: string) =>
   await q(
     "select m.workspace_id, m.role from memberships m join users u on u.id = m.user_id where u.email = $1 order by m.created_at",
@@ -84,6 +97,16 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
     jar.clear();
     forget();
     forgetCount();
+    (await import("@/lib/users")).forgetSessions();
+    mail.length = 0;
+    vi.stubEnv("RESEND_API_KEY", "re_test");
+    vi.stubEnv("MAIL_FROM", "Creavia <hello@studio.example>");
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      if (url !== "https://api.resend.com/emails") throw new Error(`unexpected fetch ${url}`);
+      const b = JSON.parse(String(init.body)) as { to: string[]; subject: string; text: string };
+      mail.push({ to: b.to[0], subject: b.subject, text: b.text });
+      return Response.json({ id: "email_1" });
+    });
     // the studio has its founder, so it's no longer "whoever comes first founds it"
     expect((await signUp("founder@example.com")).status).toBe(200);
     jar.clear();
@@ -97,8 +120,7 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
   });
 
   it("with OPEN_SIGNUP, someone off the list gets a workspace of their own, as its owner, and not the studio's", async () => {
-    vi.stubEnv("OPEN_SIGNUP", "1");
-    expect((await signUp("bo@example.com")).status).toBe(200);
+    expect((await openSignUp("bo@example.com")).status).toBe(200);
     const [m] = await workspaceOf("bo@example.com");
     expect(m.workspace_id).not.toBe(FOUNDING);
     expect(m.role).toBe("owner");
@@ -114,8 +136,7 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
   });
 
   it("an invite works once, only for its email, and only into its workspace", async () => {
-    vi.stubEnv("OPEN_SIGNUP", "1");
-    await signUp("bo@example.com");
+    await openSignUp("bo@example.com");
     const [bo] = await workspaceOf("bo@example.com");
     const made = await ws("POST", "invites", { email: "cy@example.com", role: "member" });
     expect(made.status).toBe(200);
@@ -145,8 +166,7 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
   });
 
   it("only owners invite, change roles or take invites back, and a workspace keeps an owner", async () => {
-    vi.stubEnv("OPEN_SIGNUP", "1");
-    await signUp("bo@example.com");
+    await openSignUp("bo@example.com");
     const token = tokenOf((await ws("POST", "invites", { email: "cy@example.com" })).body.link);
     const pending = await ws("POST", "invites", { email: "fay@example.com" });
     jar.clear();
@@ -166,19 +186,17 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
   });
 
   it("an owner's invite list and take-backs are only their workspace's", async () => {
-    vi.stubEnv("OPEN_SIGNUP", "1");
     await signIn("founder@example.com");
     const studio = await ws("POST", "invites", { email: "gil@example.com" });
     jar.clear();
-    await signUp("bo@example.com");
+    await openSignUp("bo@example.com");
     expect((await ws("GET", "invites")).body.invites).toEqual([]);
     expect((await ws("DELETE", `invites/${studio.body.id}`)).status).toBe(404);
     expect(await q("select email from invites")).toEqual([{ email: "gil@example.com" }]);
   });
 
   it("the master key works in the first workspace once others exist, and owns it", async () => {
-    vi.stubEnv("OPEN_SIGNUP", "1");
-    await signUp("bo@example.com");
+    await openSignUp("bo@example.com");
     jar.clear();
     const { startSession } = await import("@/lib/session");
     await startSession("token", "token");
@@ -197,5 +215,142 @@ describe.skipIf(!URL_)("accounts (Postgres)", () => {
     jar.clear();
     expect((await signUp("ivy@example.com", { invite: token })).status).toBe(410);
     expect(await asWorkspace(FOUNDING, async () => (await import("@/lib/invites")).peekInvite(token))).toBeNull();
+  });
+
+  describe("email (3b)", () => {
+    it("open sign-up needs a sender for the email check: without one it's refused, and no account is made", async () => {
+      vi.stubEnv("OPEN_SIGNUP", "1");
+      vi.stubEnv("RESEND_API_KEY", "");
+      expect((await signUp("bo@example.com")).status).toBe(503);
+      expect(await q("select 1 from users where email = 'bo@example.com'")).toEqual([]);
+    });
+
+    it("an open sign-up can't sign in until the emailed link is opened, and a fresh link can be asked for", async () => {
+      vi.stubEnv("OPEN_SIGNUP", "1");
+      const r = await signUp("bo@example.com");
+      expect(r.status).toBe(200);
+      expect(jar.size).toBe(0); // not signed in
+      const first = linkIn("bo@example.com", "verify");
+      const refused = await signIn("bo@example.com");
+      expect(refused.status).toBe(403);
+      expect(refused.body.verify).toBe(true);
+      expect((await login({ resend: { email: "bo@example.com" } })).status).toBe(200);
+      const second = linkIn("bo@example.com", "verify");
+      expect(second).not.toBe(first);
+      expect((await login({ verify: first })).status).toBe(410); // the older link stopped working
+      expect((await login({ verify: second })).status).toBe(200);
+      expect((await login({ verify: second })).status).toBe(410); // once
+      jar.clear();
+      expect((await signIn("bo@example.com")).status).toBe(200);
+    });
+
+    it("a password reset works once, for an hour, and ends the person's older sign-ins", async () => {
+      await signIn("founder@example.com");
+      const before = new Map(jar);
+      jar.clear();
+      expect((await login({ reset: { email: "founder@example.com" } })).status).toBe(200);
+      const token = linkIn("founder@example.com", "reset");
+      expect(token).not.toBe("");
+      await new Promise((r) => setTimeout(r, 5)); // the reset comes after that sign-in
+      expect((await login({ reset: { token, password: "short" } })).status).toBe(400);
+      expect((await login({ reset: { token, password: "a-brand-new-password" } })).status).toBe(200);
+      expect((await login({ reset: { token, password: "another-new-password" } })).status).toBe(410);
+      // the old password is gone, the new one works
+      jar.clear();
+      expect((await signIn("founder@example.com")).status).toBe(401);
+      expect((await login({ email: "founder@example.com", password: "a-brand-new-password" })).status).toBe(200);
+      // the sign-in from before the reset no longer works
+      jar.clear();
+      for (const [k, v] of before) jar.set(k, v);
+      (await import("@/lib/users")).forgetSessions();
+      expect((await ws("GET", "team")).status).toBe(401);
+    });
+
+    it("an expired reset link does nothing", async () => {
+      await login({ reset: { email: "founder@example.com" } });
+      const token = linkIn("founder@example.com", "reset");
+      await q("update email_tokens set expires_at = now() - interval '1 minute'");
+      expect((await login({ reset: { token, password: "a-brand-new-password" } })).status).toBe(410);
+    });
+
+    it("asking for a reset says the same whether or not the email has an account, and sends only to real ones", async () => {
+      const a = await login({ reset: { email: "founder@example.com" } });
+      const b = await login({ reset: { email: "nobody@example.com" } });
+      expect(a).toEqual(b);
+      expect(mail.map((m) => m.to)).toEqual(["founder@example.com"]);
+    });
+
+    it("without a sender, a reset can't be asked for (and says so)", async () => {
+      vi.stubEnv("MAIL_FROM", "");
+      expect((await login({ reset: { email: "founder@example.com" } })).status).toBe(503);
+    });
+  });
+
+  describe("Google sign-in (3b)", () => {
+    const google = (profile: { email: string; email_verified: boolean; name?: string }) =>
+      vi.stubGlobal("fetch", async (url: string) => {
+        if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "ya29.test" });
+        if (url === "https://openidconnect.googleapis.com/v1/userinfo") return Response.json(profile);
+        throw new Error(`unexpected fetch ${url}`);
+      });
+    const viaGoogle = async (invite = "") => {
+      vi.stubEnv("GOOGLE_CLIENT_ID", "client.apps.googleusercontent.com");
+      vi.stubEnv("GOOGLE_CLIENT_SECRET", "secret");
+      const start = await (await import("@/app/api/auth/google/route")).GET(
+        new Request(`${SITE}/api/auth/google${invite ? `?invite=${invite}` : ""}`),
+      );
+      const state = new URL(String(start.headers.get("location"))).searchParams.get("state");
+      const back = await (await import("@/app/api/auth/google/callback/route")).GET(
+        new Request(`${SITE}/api/auth/google/callback?code=abc&state=${state}`),
+      );
+      return { status: back.status, text: back.status === 303 ? "" : await back.text() };
+    };
+
+    it("signs in an account with that email, where it works", async () => {
+      google({ email: "Founder@Example.com", email_verified: true });
+      expect((await viaGoogle()).status).toBe(303);
+      expect((await ws("GET", "workspaces")).body.current).toBe(FOUNDING);
+    });
+
+    it("refuses an email Google hasn't verified, and a stranger when sign-up is closed", async () => {
+      google({ email: "founder@example.com", email_verified: false });
+      expect((await viaGoogle()).status).toBe(403);
+      google({ email: "stranger@example.com", email_verified: true });
+      expect((await viaGoogle()).status).toBe(403);
+      expect(await q("select 1 from users where email = 'stranger@example.com'")).toEqual([]);
+    });
+
+    it("with open sign-up, a stranger gets a workspace of their own, no email link needed (Google vouched)", async () => {
+      vi.stubEnv("OPEN_SIGNUP", "1");
+      vi.stubEnv("RESEND_API_KEY", ""); // not needed when Google vouches
+      google({ email: "jo@example.com", email_verified: true, name: "Jo" });
+      expect((await viaGoogle()).status).toBe(303);
+      const [m] = await workspaceOf("jo@example.com");
+      expect(m).toMatchObject({ role: "owner" });
+      expect(m.workspace_id).not.toBe(FOUNDING);
+      expect(await q("select password_hash, email_verified from users where email = 'jo@example.com'")).toEqual([
+        { password_hash: null, email_verified: true },
+      ]);
+    });
+
+    it("takes an invite through, for the invited email only", async () => {
+      await signIn("founder@example.com");
+      const token = tokenOf((await ws("POST", "invites", { email: "kim@example.com" })).body.link);
+      jar.clear();
+      google({ email: "lee@example.com", email_verified: true });
+      expect((await viaGoogle(token)).status).toBe(403);
+      google({ email: "kim@example.com", email_verified: true });
+      expect((await viaGoogle(token)).status).toBe(303);
+      expect(await workspaceOf("kim@example.com")).toEqual([{ workspace_id: FOUNDING, role: "member" }]);
+    });
+
+    it("refuses a callback this browser didn't start", async () => {
+      vi.stubEnv("GOOGLE_CLIENT_ID", "client.apps.googleusercontent.com");
+      vi.stubEnv("GOOGLE_CLIENT_SECRET", "secret");
+      const back = await (await import("@/app/api/auth/google/callback/route")).GET(
+        new Request(`${SITE}/api/auth/google/callback?code=abc&state=forged`),
+      );
+      expect(back.status).toBe(400);
+    });
   });
 });

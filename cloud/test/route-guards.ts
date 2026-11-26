@@ -37,6 +37,8 @@ export const ROUTES: Record<string, RouteGuard> = {
   },
   "api/auth/github/route.ts": { guard: "sign-in" },
   "api/auth/github/callback/route.ts": { guard: "sign-in" },
+  "api/auth/google/route.ts": { guard: "sign-in" },
+  "api/auth/google/callback/route.ts": { guard: "sign-in" },
   "api/bundle/route.ts": { guard: "worker" },
   "api/cron/backup/route.ts": { guard: "cron" },
   "api/cron/live/route.ts": { guard: "cron" },

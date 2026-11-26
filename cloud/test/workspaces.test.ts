@@ -47,6 +47,27 @@ describe.skipIf(!URL_)("workspaces (Postgres)", () => {
   };
 
   describe("the migration", () => {
+    it("makes everyone already in the studio before roles began an owner, once (007)", async () => {
+      await q(
+        `insert into users (id, email, name) values ('o1', 'one@x.test', 'One'), ('o2', 'two@x.test', 'Two'), ('o3', 'new@x.test', 'New')`,
+      );
+      await q(`insert into memberships (workspace_id, user_id, role, created_at) values
+        ('w_founding', 'o1', 'owner', '2026-11-01'), ('w_founding', 'o2', 'member', '2026-11-02'), ('w_founding', 'o3', 'member', now())`);
+      await q("delete from schema_once where name = 'founding_owners'"); // as on a studio from before 007
+      useClient({ query: q });
+      await ensureSchema();
+      expect(await q("select user_id, role from memberships order by user_id")).toEqual([
+        { user_id: "o1", role: "owner" },
+        { user_id: "o2", role: "owner" },
+        { user_id: "o3", role: "member" }, // joined after roles began: the role it was given
+      ]);
+      // once only: someone made a member later stays one
+      await q("update memberships set role = 'member' where user_id = 'o2'");
+      useClient({ query: q });
+      await ensureSchema();
+      expect(await q("select role from memberships where user_id = 'o2'")).toEqual([{ role: "member" }]);
+    });
+
     it("makes the first workspace and runs again safely", async () => {
       await ensureSchema(); // already made in beforeEach: a second run changes nothing
       useClient({ query: q });
