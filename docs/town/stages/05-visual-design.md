@@ -1,6 +1,8 @@
 # Stage 5: visual design and design system
 
-**Status:** not started. A new design system from scratch: docs/DESIGN.md gives the brand (matte black, marigold,
+**Status:** begun (2026-11-26): the first tokens and parts are in `cloud/creavia/` (`creavia.css`, scoped to `.cv`;
+`ui.tsx`: Vee, Field, Trust), used by the account screens. They move to a package the desktop shares when the second
+screen set needs them. A new design system from scratch: docs/DESIGN.md gives the brand (matte black, marigold,
 Geist, Vee), but no VoiceBox component, layout or style is reused. **Done when:** every MVP screen is built only from
 library parts, and a review against the eight rules below passes.
 

@@ -51,7 +51,11 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
   key, so Colab works in every workspace.
 - **A second lock** (slice 4, 2026-11-26): Postgres itself keeps each workspace's rows to that workspace (row-level
   security), and a sweep calls every MCP tool with another workspace's ids. Workspaces and accounts are done.
-- **Next:** the account screens with the Phase 0 UX; the owner's setup of
+- **Account screens** (2026-11-26): sign in, sign up, check your email, reset a password and accept an invite on
+  `/login`; workspaces, people, roles and invites on `/account`. The first screens in Creavia's own design
+  (`cloud/creavia/`), not VoiceBox's.
+- **Next:** "The app connects by itself" (the desktop signs in to the service with these screens' accounts) and the
+  new frame; the owner's setup of
   staging and retesting live updates run alongside (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.
