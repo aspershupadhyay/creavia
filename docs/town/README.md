@@ -39,10 +39,11 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
 - **Stored files are per workspace too** (slice 2a, 2026-11-26): every settings, state and media file lives under its
   workspace, and tests prove one workspace can't read, list or delete another's.
 - **Keys, links and scheduled work too** (slice 2b part 1, 2026-11-26): MCP keys, GPU keys, upload and share links
-  each name their workspace and work only there; scheduled work runs once per workspace.
+  each name their workspace and work only there; scheduled work runs once per workspace. Auto-DM too (slice 2b part 2):
+  each Instagram account belongs to one workspace, and its comments, DMs, inbox and link clicks stay there.
 - **UX direction set** (2026-11-26): handled the way Town handles its assistant, as Creavia's own
   ([stages/04-ux.md](stages/04-ux.md)).
-- **Next:** Auto-DM per workspace (slice 2b part 2), then accounts (slice 3); the owner's setup of
+- **Next:** accounts (slice 3: sign-up, invites, roles, the switcher, a worker key per workspace); the owner's setup of
   staging and retesting live updates run alongside (see
   [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
   research plan, PRDs), then the Phase 0 build.

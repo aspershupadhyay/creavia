@@ -2,11 +2,14 @@
 // per comment, DM, story reply, story mention, button tap, AI answer or comment-rule action. The unique
 // (account, kind, ref) key is the "answered at most once" guarantee, even when Instagram delivers the same event twice
 // at the same moment. Emails people send are in autodm_leads.
-import { sql } from "../db";
+// Every row is one workspace's (db/006_autodm_workspaces.sql): each query reads and writes only the workspace this
+// request runs in (lib/tenant.ts), which for Instagram's webhook is the one that connected the account (lib/publish/owners.ts).
+import { ensureSchema, sql } from "../db";
+import { workspaceId } from "../tenant";
 
 let ready: Promise<void> | null = null;
 /** Bump when SCHEMA changes: a cold start then checks one row instead of running every statement (each one a round trip). */
-const VERSION = 3;
+const VERSION = 4;
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS autodm_events (
     id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
@@ -45,6 +48,7 @@ export function ensure() {
   return (ready ??= (async () => {
     const v = await sql().query("select max(v) v from autodm_meta", []).then((r) => Number((r as { v: number | null }[])[0]?.v ?? 0)).catch(() => 0);
     if (v >= VERSION) return;
+    await ensureSchema(); // db/*.sql first: 006 gives these tables their workspace (and makes account_owners)
     for (const q of SCHEMA) await sql().query(q, []);
     await sql().query("delete from autodm_meta", []);
     await sql().query("insert into autodm_meta (v) values ($1)", [VERSION]);
@@ -70,76 +74,76 @@ const PERSON = "(from_id = $2 or psid = $2)";
 export async function claim(e: { account: string; kind: DmKind; ref: string; automation: string | null; automation_name: string | null; media?: string | null; from_id: string; from_name?: string | null; text: string; psid?: string | null; status?: DmStatus }) {
   await ensure();
   const [row] = rows<{ id: number }>(await sql().query(
-    `insert into autodm_events (account, kind, ref, automation, automation_name, media, from_id, from_name, text, psid, status)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (account, kind, ref) do nothing returning id`,
-    [e.account, e.kind, e.ref.slice(0, 200), e.automation, e.automation_name?.slice(0, 120) ?? null, e.media ?? null, e.from_id, e.from_name ?? null, e.text.slice(0, 1000), e.psid ?? null, e.status ?? "pending"]));
+    `insert into autodm_events (account, kind, ref, automation, automation_name, media, from_id, from_name, text, psid, status, workspace_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (workspace_id, account, kind, ref) do nothing returning id`,
+    [e.account, e.kind, e.ref.slice(0, 200), e.automation, e.automation_name?.slice(0, 120) ?? null, e.media ?? null, e.from_id, e.from_name ?? null, e.text.slice(0, 1000), e.psid ?? null, e.status ?? "pending", await workspaceId()]));
   return row?.id ?? null;
 }
 
 export type Patch = Partial<Pick<DmEvent, "status" | "replied" | "following" | "error" | "note" | "psid" | "variant" | "awaiting" | "reply" | "links" | "automation" | "automation_name">>;
 /** Change a row: only the fields given (null clears one). */
 export async function finish(id: number, p: Patch) {
-  const set: string[] = ["updated_at = now()"], v: unknown[] = [id];
+  const set: string[] = ["updated_at = now()"], v: unknown[] = [id, await workspaceId()];
   for (const [k, x] of Object.entries(p)) {
     if (x === undefined || !/^[a-z_]+$/.test(k)) continue;
     v.push(k === "reply" && typeof x === "string" ? x.slice(0, 2000) : x);
     set.push(`${k} = $${v.length}`);
   }
-  await sql().query(`update autodm_events set ${set.join(", ")} where id = $1`, v);
+  await sql().query(`update autodm_events set ${set.join(", ")} where id = $1 and workspace_id = $2`, v);
 }
 
 export async function getEvent(id: number) {
   await ensure();
-  const [row] = rows<DmEvent>(await sql().query("select * from autodm_events where id = $1", [id]));
+  const [row] = rows<DmEvent>(await sql().query("select * from autodm_events where id = $1 and workspace_id = $2", [id, await workspaceId()]));
   return row ?? null;
 }
 
 /** Has this person already been sent (or is waiting on) this automation? */
 export async function already(automation: string, account: string, from: string, except: number) {
   const r = rows<{ status: DmStatus }>(await sql().query(
-    `select status from autodm_events where automation = $3 and account = $1 and ${PERSON} and id <> $4 and status in ('sent', 'gated', 'held') order by id desc limit 1`,
-    [account, from, automation, except]));
+    `select status from autodm_events where automation = $3 and account = $1 and ${PERSON} and id <> $4 and status in ('sent', 'gated', 'held') and workspace_id = $5 order by id desc limit 1`,
+    [account, from, automation, except, await workspaceId()]));
   return r[0]?.status ?? null;
 }
 
 /** DMs sent to one person over the last 24 hours, every automation together. */
 export async function sentToPerson(account: string, from: string) {
   const [r] = rows<{ n: string }>(await sql().query(
-    `select count(*) n from autodm_events where account = $1 and ${PERSON} and status = 'sent' and kind <> 'mod' and at > now() - interval '24 hours'`, [account, from]));
+    `select count(*) n from autodm_events where account = $1 and ${PERSON} and status = 'sent' and kind <> 'mod' and at > now() - interval '24 hours' and workspace_id = $3`, [account, from, await workspaceId()]));
   return +(r?.n ?? 0);
 }
 
 /** DMs this account sent in the last hour. */
 export async function sentLastHour(account: string) {
   const [r] = rows<{ n: string }>(await sql().query(
-    "select count(*) n from autodm_events where account = $1 and status = 'sent' and kind <> 'mod' and updated_at > now() - interval '1 hour'", [account]));
+    "select count(*) n from autodm_events where account = $1 and status = 'sent' and kind <> 'mod' and updated_at > now() - interval '1 hour' and workspace_id = $2", [account, await workspaceId()]));
   return +(r?.n ?? 0);
 }
 
 /** The newest row waiting on this person (a follow tap or an email), within Instagram's reply windows. */
 export async function waitingOn(account: string, psid: string, what: "email" | "follow") {
   const [r] = rows<DmEvent>(await sql().query(
-    `select * from autodm_events where account = $1 and ${PERSON} and awaiting = $3 and at > now() - interval '7 days' order by id desc limit 1`, [account, psid, what]));
+    `select * from autodm_events where account = $1 and ${PERSON} and awaiting = $3 and at > now() - interval '7 days' and workspace_id = $4 order by id desc limit 1`, [account, psid, what, await workspaceId()]));
   return r ?? null;
 }
 
 /** What was said with this person lately (oldest first): their messages and what we answered. */
 export async function conversation(account: string, psid: string, limit = 8) {
   const r = rows<DmEvent>(await sql().query(
-    `select * from autodm_events where account = $1 and ${PERSON} and kind <> 'mod' and at > now() - interval '24 hours' order by id desc limit ${Math.max(1, Math.min(20, limit))}`, [account, psid]));
+    `select * from autodm_events where account = $1 and ${PERSON} and kind <> 'mod' and at > now() - interval '24 hours' and workspace_id = $3 order by id desc limit ${Math.max(1, Math.min(20, limit))}`, [account, psid, await workspaceId()]));
   return r.reverse();
 }
 
 /** The newest DM an automation sent this person in the last 24 hours (an AI answer follows up on it). */
 export async function lastSent(account: string, psid: string) {
   const [r] = rows<DmEvent>(await sql().query(
-    `select * from autodm_events where account = $1 and ${PERSON} and status = 'sent' and automation is not null and kind not in ('mod', 'ai') and at > now() - interval '24 hours' order by id desc limit 1`, [account, psid]));
+    `select * from autodm_events where account = $1 and ${PERSON} and status = 'sent' and automation is not null and kind not in ('mod', 'ai') and at > now() - interval '24 hours' and workspace_id = $3 order by id desc limit 1`, [account, psid, await workspaceId()]));
   return r ?? null;
 }
 
 export async function aiToPerson(account: string, psid: string) {
   const [r] = rows<{ n: string }>(await sql().query(
-    `select count(*) n from autodm_events where account = $1 and ${PERSON} and kind = 'ai' and status = 'sent' and at > now() - interval '24 hours'`, [account, psid]));
+    `select count(*) n from autodm_events where account = $1 and ${PERSON} and kind = 'ai' and status = 'sent' and at > now() - interval '24 hours' and workspace_id = $3`, [account, psid, await workspaceId()]));
   return +(r?.n ?? 0);
 }
 
@@ -147,8 +151,8 @@ export async function aiToPerson(account: string, psid: string) {
 export async function click(id: number, count: boolean) {
   await ensure();
   const [r] = rows<{ links: string[] | null; automation: string | null }>(await sql().query(
-    count ? "update autodm_events set clicks = clicks + 1, clicked_at = coalesce(clicked_at, now()) where id = $1 returning links, automation"
-      : "select links, automation from autodm_events where id = $1", [id]));
+    count ? "update autodm_events set clicks = clicks + 1, clicked_at = coalesce(clicked_at, now()) where id = $1 and workspace_id = $2 returning links, automation"
+      : "select links, automation from autodm_events where id = $1 and workspace_id = $2", [id, await workspaceId()]));
   return r ?? null;
 }
 
@@ -157,7 +161,7 @@ export async function variants(automation: string) {
   await ensure();
   const r = rows<{ variant: string; sent: string; clicked: string }>(await sql().query(
     `select coalesce(variant, 'a') variant, count(*) sent, count(clicked_at) clicked from autodm_events
-     where automation = $1 and status = 'sent' and kind not in ('ai', 'mod') group by 1`, [automation]));
+     where automation = $1 and status = 'sent' and kind not in ('ai', 'mod') and workspace_id = $2 group by 1`, [automation, await workspaceId()]));
   const out = { a: { sent: 0, clicked: 0 }, b: { sent: 0, clicked: 0 } };
   for (const x of r) if (x.variant === "a" || x.variant === "b") out[x.variant] = { sent: +x.sent, clicked: +x.clicked };
   return out;
@@ -167,14 +171,15 @@ export type Stat = { total: number; sent: number; gated: number; failed: number;
 /** Each automation's numbers over the last N days. */
 export async function stats(days = 30): Promise<Record<string, Stat>> {
   await ensure();
+  const w = await workspaceId();
   const [r, l] = await Promise.all([
     sql().query(
       `select automation, count(*) total, count(*) filter (where status = 'sent') sent, count(*) filter (where status = 'gated') gated,
          count(*) filter (where status = 'failed') failed, count(*) filter (where status = 'held') held, count(clicked_at) clicked, max(at) last,
          count(*) filter (where status = 'sent' and coalesce(variant, 'a') = 'a') a_sent, count(clicked_at) filter (where coalesce(variant, 'a') = 'a') a_clicked,
          count(*) filter (where status = 'sent' and variant = 'b') b_sent, count(clicked_at) filter (where variant = 'b') b_clicked
-       from autodm_events where at > now() - make_interval(days => $1::int) and automation is not null and kind not in ('ai', 'mod') group by automation`, [days]),
-    sql().query("select automation, count(*) n from autodm_leads where at > now() - make_interval(days => $1::int) and automation is not null group by automation", [days]),
+       from autodm_events where at > now() - make_interval(days => $1::int) and automation is not null and kind not in ('ai', 'mod') and workspace_id = $2 group by automation`, [days, w]),
+    sql().query("select automation, count(*) n from autodm_leads where at > now() - make_interval(days => $1::int) and automation is not null and workspace_id = $2 group by automation", [days, w]),
   ]);
   const leads = new Map(rows<{ automation: string; n: string }>(l).map((x) => [x.automation, +x.n]));
   return Object.fromEntries(rows<Record<string, string>>(r).map((x) => [x.automation, {
@@ -187,15 +192,16 @@ export type Totals = { total: number; sent: number; gated: number; failed: numbe
 /** Everything together over a window of days, ending `ago` days back. */
 export async function totals(days = 30, ago = 0): Promise<Totals> {
   await ensure();
-  const w = "at > now() - make_interval(days => $1::int + $2::int) and at <= now() - make_interval(days => $2::int)";
+  const w = "at > now() - make_interval(days => $1::int + $2::int) and at <= now() - make_interval(days => $2::int) and workspace_id = $3";
+  const ws = await workspaceId();
   const [[r], [l]] = await Promise.all([
     sql().query(
       `select count(*) filter (where kind not in ('ai', 'mod')) total, count(*) filter (where status = 'sent' and kind not in ('ai', 'mod')) sent,
          count(*) filter (where status = 'gated') gated, count(*) filter (where status = 'failed') failed, count(*) filter (where status = 'held') held,
          count(clicked_at) clicked, count(distinct (account, coalesce(psid, from_id))) filter (where kind not in ('mod')) people,
          count(*) filter (where kind = 'ai' and status = 'sent') ai, count(*) filter (where kind = 'mod' and status in ('hidden', 'deleted', 'flagged')) moderated
-       from autodm_events where ${w}`, [days, ago]).then((x) => rows<Record<string, string>>(x)),
-    sql().query(`select count(*) n from autodm_leads where ${w}`, [days, ago]).then((x) => rows<{ n: string }>(x)),
+       from autodm_events where ${w}`, [days, ago, ws]).then((x) => rows<Record<string, string>>(x)),
+    sql().query(`select count(*) n from autodm_leads where ${w}`, [days, ago, ws]).then((x) => rows<{ n: string }>(x)),
   ]);
   return { total: +(r?.total ?? 0), sent: +(r?.sent ?? 0), gated: +(r?.gated ?? 0), failed: +(r?.failed ?? 0), held: +(r?.held ?? 0), clicked: +(r?.clicked ?? 0), people: +(r?.people ?? 0), leads: +(l?.n ?? 0), ai: +(r?.ai ?? 0), moderated: +(r?.moderated ?? 0) };
 }
@@ -207,7 +213,7 @@ export async function daily(days = 30) {
     `select to_char(d, 'YYYY-MM-DD') as day, coalesce(e.sent, 0) sent, coalesce(e.clicked, 0) clicked
      from generate_series(date_trunc('day', now()) - make_interval(days => $1::int - 1), date_trunc('day', now()), interval '1 day') d
      left join (select date_trunc('day', at) as day, count(*) filter (where status = 'sent' and kind not in ('mod')) sent, count(clicked_at) clicked
-       from autodm_events where at > now() - make_interval(days => $1::int + 1) group by 1) e on e.day = d order by d`, [days]));
+       from autodm_events where at > now() - make_interval(days => $1::int + 1) and workspace_id = $2 group by 1) e on e.day = d order by d`, [days, await workspaceId()]));
   return r.map((x) => ({ day: x.day, sent: +x.sent, clicked: +x.clicked }));
 }
 
@@ -215,6 +221,7 @@ export async function activity(f: { automation?: string; account?: string; statu
   await ensure();
   const where: string[] = [], v: unknown[] = [];
   const at = (x: unknown) => { v.push(x); return `$${v.length}`; };
+  where.push(`workspace_id = ${at(await workspaceId())}`);
   if (f.automation) where.push(`automation = ${at(f.automation)}`);
   if (f.account) where.push(`account = ${at(f.account)}`);
   if (f.status) where.push(`status = ${at(f.status)}`);
@@ -228,7 +235,7 @@ export async function activity(f: { automation?: string; account?: string; statu
 /** Everyone who triggered an automation: how often, what they got, whether they follow (when a gate checked), their email. */
 export async function contacts(f: { account?: string; q?: string; limit?: number }) {
   await ensure();
-  const where = ["from_id is not null", "e.kind <> 'mod'"], v: unknown[] = [];
+  const where = ["from_id is not null", "e.kind <> 'mod'", "e.workspace_id = $1"], v: unknown[] = [await workspaceId()];
   if (f.account) { v.push(f.account); where.push(`e.account = $${v.length}`); }
   if (f.q) { v.push(like(f.q)); where.push(`e.from_name ilike $${v.length}`); }
   const limit = Math.max(1, Math.min(1000, f.limit ?? 300));
@@ -236,8 +243,8 @@ export async function contacts(f: { account?: string; q?: string; limit?: number
     `select e.account, e.from_id, max(e.from_name) from_name, count(*) times, count(*) filter (where e.status = 'sent') got, count(e.clicked_at) clicked, max(e.at) last,
        (array_agg(e.following order by e.id desc) filter (where e.following is not null))[1] following,
        array_agg(distinct e.automation_name) filter (where e.automation_name is not null) automations,
-       (select l.email from autodm_leads l where l.account = e.account and (l.from_id = e.from_id or l.from_id = max(e.psid)) order by l.id desc limit 1) email
-     from autodm_events e where ${where.join(" and ")} group by e.account, e.from_id order by max(e.at) desc limit ${limit}`, v));
+       (select l.email from autodm_leads l where l.workspace_id = e.workspace_id and l.account = e.account and (l.from_id = e.from_id or l.from_id = max(e.psid)) order by l.id desc limit 1) email
+     from autodm_events e where ${where.join(" and ")} group by e.workspace_id, e.account, e.from_id order by max(e.at) desc limit ${limit}`, v));
   return r.map((x) => ({ ...x, times: +x.times, got: +x.got, clicked: +x.clicked }));
 }
 
@@ -246,14 +253,14 @@ export type Lead = { id: number; at: string; account: string; from_id: string; f
 export async function addLead(l: Omit<Lead, "id" | "at"> & { event: number | null }) {
   await ensure();
   const r = rows<{ id: number }>(await sql().query(
-    `insert into autodm_leads (account, from_id, from_name, email, automation, automation_name, event) values ($1, $2, $3, $4, $5, $6, $7)
-     on conflict (account, from_id, email) do nothing returning id`, [l.account, l.from_id, l.from_name, l.email.slice(0, 200), l.automation, l.automation_name, l.event]));
+    `insert into autodm_leads (account, from_id, from_name, email, automation, automation_name, event, workspace_id) values ($1, $2, $3, $4, $5, $6, $7, $8)
+     on conflict (workspace_id, account, from_id, email) do nothing returning id`, [l.account, l.from_id, l.from_name, l.email.slice(0, 200), l.automation, l.automation_name, l.event, await workspaceId()]));
   return r.length > 0;
 }
 
 export async function leads(f: { account?: string; q?: string; automation?: string; limit?: number }) {
   await ensure();
-  const where: string[] = ["true"], v: unknown[] = [];
+  const where: string[] = ["workspace_id = $1"], v: unknown[] = [await workspaceId()];
   if (f.account) { v.push(f.account); where.push(`account = $${v.length}`); }
   if (f.automation) { v.push(f.automation); where.push(`automation = $${v.length}`); }
   if (f.q) { v.push(like(f.q)); where.push(`(email ilike $${v.length} or from_name ilike $${v.length})`); }
@@ -265,14 +272,14 @@ export async function leads(f: { account?: string; q?: string; automation?: stri
 export async function held(limit = 20) {
   await ensure();
   return rows<DmEvent>(await sql().query(
-    `select * from autodm_events where status = 'held' and ((kind = 'comment' and at > now() - interval '6 days 20 hours') or at > now() - interval '23 hours')
-     order by id limit ${Math.max(1, Math.min(100, limit))}`, []));
+    `select * from autodm_events where workspace_id = $1 and status = 'held' and ((kind = 'comment' and at > now() - interval '6 days 20 hours') or at > now() - interval '23 hours')
+     order by id limit ${Math.max(1, Math.min(100, limit))}`, [await workspaceId()]));
 }
 /** Held rows past their window: given up on. */
 export async function expireHeld() {
   await sql().query(
     `update autodm_events set status = 'skipped', note = 'Held by the hourly limit past Instagram''s reply window', updated_at = now()
-     where status = 'held' and ((kind = 'comment' and at <= now() - interval '6 days 20 hours') or (kind <> 'comment' and at <= now() - interval '23 hours'))`, []);
+     where workspace_id = $1 and status = 'held' and ((kind = 'comment' and at <= now() - interval '6 days 20 hours') or (kind <> 'comment' and at <= now() - interval '23 hours'))`, [await workspaceId()]);
 }
 
 /** The most-sent automations over a window (the weekly report). */
@@ -280,7 +287,7 @@ export async function top(days = 7, limit = 5) {
   await ensure();
   return rows<{ automation: string; name: string; sent: string; clicked: string }>(await sql().query(
     `select automation, max(automation_name) name, count(*) filter (where status = 'sent') sent, count(clicked_at) clicked from autodm_events
-     where at > now() - make_interval(days => $1::int) and automation is not null and kind not in ('ai', 'mod') group by automation order by 3 desc limit ${limit}`, [days])).map((x) => ({ ...x, sent: +x.sent, clicked: +x.clicked }));
+     where at > now() - make_interval(days => $1::int) and automation is not null and kind not in ('ai', 'mod') and workspace_id = $2 group by automation order by 3 desc limit ${limit}`, [days, await workspaceId()])).map((x) => ({ ...x, sent: +x.sent, clicked: +x.clicked }));
 }
 
 // ── the inbox: every message both ways, one row per person
@@ -298,35 +305,36 @@ export async function logMessage(m: { account: string; psid: string; dir: "in" |
   await ensure();
   const mid = m.mid || `local:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   const r = rows<{ username: string | null }>(await sql().query(
-    `with m as (insert into autodm_messages (account, psid, dir, text, mid, by, kind) values ($1, $2, $3, $4, $5, $6, $7)
-       on conflict (account, mid) do nothing returning at)
-     insert into autodm_people (account, psid, username, last_in, last_out, last_text, last_dir, unread, state, updated_at)
-     select $1, $2, $8, case when $3 = 'in' then m.at end, case when $3 = 'out' then m.at end, left($4, 300), $3, case when $3 = 'in' then 1 else 0 end, 'open', m.at from m
-     on conflict (account, psid) do update set
+    `with m as (insert into autodm_messages (account, psid, dir, text, mid, by, kind, workspace_id) values ($1, $2, $3, $4, $5, $6, $7, $9)
+       on conflict (workspace_id, account, mid) do nothing returning at)
+     insert into autodm_people (account, psid, username, last_in, last_out, last_text, last_dir, unread, state, updated_at, workspace_id)
+     select $1, $2, $8, case when $3 = 'in' then m.at end, case when $3 = 'out' then m.at end, left($4, 300), $3, case when $3 = 'in' then 1 else 0 end, 'open', m.at, $9 from m
+     on conflict (workspace_id, account, psid) do update set
        username = coalesce(autodm_people.username, excluded.username),
        last_in = coalesce(excluded.last_in, autodm_people.last_in), last_out = coalesce(excluded.last_out, autodm_people.last_out),
        last_text = excluded.last_text, last_dir = excluded.last_dir,
        unread = case when excluded.last_dir = 'in' then autodm_people.unread + 1 when $6::text in ('bot', 'AI') then autodm_people.unread else 0 end,
        state = case when excluded.last_dir = 'in' then 'open' else autodm_people.state end, updated_at = excluded.updated_at
      returning username`,
-    [m.account, m.psid, m.dir, m.text.slice(0, 4000), mid.slice(0, 200), m.by ?? null, m.kind ?? null, m.username ?? null]));
+    [m.account, m.psid, m.dir, m.text.slice(0, 4000), mid.slice(0, 200), m.by ?? null, m.kind ?? null, m.username ?? null, await workspaceId()]));
   return { fresh: r.length > 0, needsName: r.length > 0 && !r[0].username };
 }
 
 export async function setProfile(account: string, psid: string, p: { username?: string | null; name?: string | null; avatar?: string | null }) {
   await ensure();
   await sql().query(
-    `insert into autodm_people (account, psid, username, name, avatar) values ($1, $2, $3, $4, $5)
-     on conflict (account, psid) do update set username = coalesce(excluded.username, autodm_people.username),
+    `insert into autodm_people (account, psid, username, name, avatar, workspace_id) values ($1, $2, $3, $4, $5, $6)
+     on conflict (workspace_id, account, psid) do update set username = coalesce(excluded.username, autodm_people.username),
        name = coalesce(excluded.name, autodm_people.name), avatar = coalesce(excluded.avatar, autodm_people.avatar)`,
-    [account, psid, p.username ?? null, p.name ?? null, p.avatar ?? null]);
+    [account, psid, p.username ?? null, p.name ?? null, p.avatar ?? null, await workspaceId()]);
 }
 
 export type InboxView = "open" | "unread" | "done" | "paused" | "all";
 /** Conversations, the most recent first: a page of 50 (before = the last one's updated_at). */
 export async function inbox(f: { account?: string; view?: InboxView; q?: string; tag?: string; before?: string; limit?: number }) {
   await ensure();
-  const where: string[] = ["last_dir is not null"], v: unknown[] = [];
+  const w = await workspaceId();
+  const where: string[] = ["last_dir is not null", "workspace_id = $1"], v: unknown[] = [w];
   const at = (x: unknown) => { v.push(x); return `$${v.length}`; };
   if (f.account) where.push(`account = ${at(f.account)}`);
   if (f.view === "open") where.push("state = 'open'");
@@ -340,7 +348,7 @@ export async function inbox(f: { account?: string; view?: InboxView; q?: string;
   const [list, counts] = await Promise.all([
     sql().query(`select * from autodm_people where ${where.join(" and ")} order by updated_at desc limit ${limit}`, v),
     sql().query(`select count(*) filter (where state = 'open') open, count(*) filter (where unread > 0) unread, count(*) filter (where bot_off_until > now()) paused
-      from autodm_people where last_dir is not null${f.account ? " and account = $1" : ""}`, f.account ? [f.account] : []),
+      from autodm_people where last_dir is not null and workspace_id = $1${f.account ? " and account = $2" : ""}`, f.account ? [w, f.account] : [w]),
   ]);
   const c = rows<Record<string, string>>(counts)[0] ?? {};
   return { people: rows<Person>(list), counts: { open: +(c.open ?? 0), unread: +(c.unread ?? 0), paused: +(c.paused ?? 0) } };
@@ -348,17 +356,18 @@ export async function inbox(f: { account?: string; view?: InboxView; q?: string;
 
 export async function person(account: string, psid: string) {
   await ensure();
-  const [r] = rows<Person>(await sql().query("select * from autodm_people where account = $1 and psid = $2", [account, psid]));
+  const [r] = rows<Person>(await sql().query("select * from autodm_people where account = $1 and psid = $2 and workspace_id = $3", [account, psid, await workspaceId()]));
   return r ?? null;
 }
 
 /** One conversation, oldest first (before = an id, for older messages), with what automations did for this person. */
 export async function thread(account: string, psid: string, before?: number) {
   await ensure();
+  const w = await workspaceId();
   const [msgs, p, evs] = await Promise.all([
-    sql().query(`select * from autodm_messages where account = $1 and psid = $2${before ? " and id < $3" : ""} order by id desc limit 100`, before ? [account, psid, before] : [account, psid]),
+    sql().query(`select * from autodm_messages where account = $1 and psid = $2 and workspace_id = $3${before ? " and id < $4" : ""} order by id desc limit 100`, before ? [account, psid, w, before] : [account, psid, w]),
     person(account, psid),
-    sql().query("select id, at, kind, automation_name, status, clicked_at, note from autodm_events where account = $1 and (psid = $2 or from_id = $2) and kind <> 'mod' order by id desc limit 20", [account, psid]),
+    sql().query("select id, at, kind, automation_name, status, clicked_at, note from autodm_events where account = $1 and (psid = $2 or from_id = $2) and kind <> 'mod' and workspace_id = $3 order by id desc limit 20", [account, psid, w]),
   ]);
   return { messages: rows<Message>(msgs).reverse(), person: p, events: rows<Record<string, unknown>>(evs), more: rows(msgs).length === 100 };
 }
@@ -366,7 +375,7 @@ export async function thread(account: string, psid: string, before?: number) {
 export type PersonPatch = { tags?: string[]; notes?: string | null; state?: "open" | "done"; bot_off_until?: string | null; read?: boolean };
 export async function patchPerson(account: string, psid: string, p: PersonPatch) {
   await ensure();
-  const set: string[] = [], v: unknown[] = [account, psid];
+  const set: string[] = [], v: unknown[] = [account, psid, await workspaceId()];
   const at = (x: unknown) => { v.push(x); return `$${v.length}`; };
   if (p.tags) set.push(`tags = ${at(p.tags)}::text[]`);
   if (p.notes !== undefined) set.push(`notes = ${at(p.notes)}`);
@@ -374,7 +383,7 @@ export async function patchPerson(account: string, psid: string, p: PersonPatch)
   if (p.bot_off_until !== undefined) set.push(`bot_off_until = ${at(p.bot_off_until)}`);
   if (p.read) set.push("unread = 0");
   if (!set.length) return person(account, psid);
-  const [r] = rows<Person>(await sql().query(`update autodm_people set ${set.join(", ")} where account = $1 and psid = $2 returning *`, v));
+  const [r] = rows<Person>(await sql().query(`update autodm_people set ${set.join(", ")} where account = $1 and psid = $2 and workspace_id = $3 returning *`, v));
   return r ?? null;
 }
 
@@ -383,22 +392,22 @@ export async function tagPerson(account: string, psid: string, tags: string[], u
   if (!tags.length) return;
   await ensure();
   await sql().query(
-    `insert into autodm_people (account, psid, username, tags) values ($1, $2, $4, $3::text[])
-     on conflict (account, psid) do update set tags = array(select distinct unnest(autodm_people.tags || $3::text[])),
-       username = coalesce(autodm_people.username, excluded.username)`, [account, psid, tags, username ?? null]);
+    `insert into autodm_people (account, psid, username, tags, workspace_id) values ($1, $2, $4, $3::text[], $5)
+     on conflict (workspace_id, account, psid) do update set tags = array(select distinct unnest(autodm_people.tags || $3::text[])),
+       username = coalesce(autodm_people.username, excluded.username)`, [account, psid, tags, username ?? null, await workspaceId()]);
 }
 
 /** Is the bot paused for this person (someone took the conversation over)? */
 export async function botOff(account: string, psid: string) {
   await ensure();
-  const [r] = rows<{ off: boolean }>(await sql().query("select bot_off_until > now() off from autodm_people where account = $1 and psid = $2", [account, psid]));
+  const [r] = rows<{ off: boolean }>(await sql().query("select bot_off_until > now() off from autodm_people where account = $1 and psid = $2 and workspace_id = $3", [account, psid, await workspaceId()]));
   return r?.off === true;
 }
 
 /** Every tag in use, with how many people have it. */
 export async function allTags() {
   await ensure();
-  return rows<{ tag: string; n: string }>(await sql().query("select t tag, count(*) n from autodm_people, unnest(tags) t group by t order by 2 desc, 1 limit 200", []))
+  return rows<{ tag: string; n: string }>(await sql().query("select t tag, count(*) n from autodm_people, unnest(tags) t where workspace_id = $1 group by t order by 2 desc, 1 limit 200", [await workspaceId()]))
     .map((x) => ({ tag: x.tag, n: +x.n }));
 }
 
@@ -406,27 +415,28 @@ export async function allTags() {
 export async function dueFollowUps(limit = 20) {
   await ensure();
   return rows<DmEvent & { last_in: string | null; username: string | null }>(await sql().query(
-    `select e.*, p.last_in, p.username from autodm_events e left join autodm_people p on p.account = e.account and p.psid = e.psid
-     where e.follow_at <= now() and e.followed_up is null order by e.follow_at limit ${Math.max(1, Math.min(50, limit))}`, []));
+    `select e.*, p.last_in, p.username from autodm_events e left join autodm_people p on p.workspace_id = e.workspace_id and p.account = e.account and p.psid = e.psid
+     where e.workspace_id = $1 and e.follow_at <= now() and e.followed_up is null order by e.follow_at limit ${Math.max(1, Math.min(50, limit))}`, [await workspaceId()]));
 }
 export async function setFollowUp(id: number, p: { follow_at?: Date | null; followed_up?: string | null; note?: string }) {
-  const set: string[] = ["updated_at = now()"], v: unknown[] = [id];
+  const set: string[] = ["updated_at = now()"], v: unknown[] = [id, await workspaceId()];
   if (p.follow_at !== undefined) { v.push(p.follow_at ? p.follow_at.toISOString() : null); set.push(`follow_at = $${v.length}`); }
   if (p.followed_up !== undefined) { v.push(p.followed_up); set.push(`followed_up = $${v.length}`); }
   if (p.note) { v.push(p.note); set.push(`note = coalesce(note || ' · ', '') || $${v.length}`); }
-  await sql().query(`update autodm_events set ${set.join(", ")} where id = $1`, v);
+  await sql().query(`update autodm_events set ${set.join(", ")} where id = $1 and workspace_id = $2`, v);
 }
 /** When the next follow-up is due (ms), or null. */
 export async function nextFollowUp() {
   await ensure();
-  const [r] = rows<{ at: string | null }>(await sql().query("select min(follow_at) at from autodm_events where follow_at is not null and followed_up is null", []));
+  const [r] = rows<{ at: string | null }>(await sql().query("select min(follow_at) at from autodm_events where follow_at is not null and followed_up is null and workspace_id = $1", [await workspaceId()]));
   return r?.at ? Date.parse(r.at) : null;
 }
 
 /** Everything kept about one person on one account: their messages, their row, the automations' rows, their emails. */
 export async function forgetPerson(account: string, psid: string) {
   await ensure();
-  const q = (s: string, v: unknown[]) => sql().query(s, v);
+  const w = await workspaceId();
+  const q = (s: string, v: unknown[]) => sql().query(`${s} and workspace_id = $${v.length + 1}`, [...v, w]);
   await Promise.all([
     q("delete from autodm_messages where account = $1 and psid = $2", [account, psid]),
     q("delete from autodm_people where account = $1 and psid = $2", [account, psid]),

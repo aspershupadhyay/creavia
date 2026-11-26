@@ -45,7 +45,8 @@ tool registry, Home, and the slow outside approvals started.
         included), shared service keys, in-memory caches per workspace; isolation tests on the bucket
   - [x] Slice 2b part 1: every key, token and link names its workspace and works only there (`lib/bound.ts`); MCP,
         GPU workers, uploads and shared links run in it; cron, backup and janitor per workspace
-  - [ ] Slice 2b part 2: Auto-DM (its tables, the Instagram webhook, tracked links) per workspace
+  - [x] Slice 2b part 2: Auto-DM per workspace (its four tables, the Instagram webhook by the account's owner,
+        tracked links)
   - [ ] Slice 4: row-level security and the full isolation sweep (routes, MCP tools, file links)
 - [ ] **Accounts:** sign-up (email + password, Google sign-in), invites, roles (owner, member), password reset.
       Slice 3 of the same spec; needs slice 2 first (sign-up creates workspaces).

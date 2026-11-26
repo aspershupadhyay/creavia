@@ -21,6 +21,9 @@ import { getAccount, listAccounts, patchAccount } from "./accounts";
 import { emailIn, matchText, type DmMatch } from "./dmmatch";
 import * as DB from "./dmstore";
 import * as IG from "./instagram";
+import { bindTo, readBound, signedText } from "../bound";
+import { asWorkspace, workspaceId } from "../tenant";
+import { safeEqual } from "../worker";
 import { getPlan } from "./plans";
 
 export { distance, matchText, keywordFrom, modMatch } from "./dmmatch";
@@ -498,18 +501,21 @@ const key = () => `${process.env.INSTAGRAM_APP_SECRET ?? ""}|${process.env.PUBLI
 export const sign = (s: string, n = 16) => createHmac("sha256", key()).update(s).digest("base64url").slice(0, n);
 const tapPayload = (id: number) => `vbdm:${id}:${sign(String(id))}`;
 const choicePayload = (id: number, i: number) => `vbdc:${id}:${i}:${sign(`c${id}:${i}`)}`;
-/** The short link a DM's button points to: /l/<row in base 36>-<which link>-<signature>. */
-export function trackUrl(id: number, k: number) {
+/** The short link a DM's button points to: /l/<row in base 36>-<which link>-<signature>, the workspace in front and
+ *  under the signature for any but the first (lib/bound.ts), so the first workspace's links are what they always were. */
+export async function trackUrl(id: number, k: number) {
   const base = process.env.APP_URL?.replace(/\/$/, "") || "https://creavia.pages.dev";
+  const w = await workspaceId();
   const t = `${id.toString(36)}-${k}`;
-  return `${base}/l/${t}-${sign(`l${t}`, 12)}`;
+  return `${base}/l/${bindTo(w, `${t}-${sign(signedText(w, `l${t}`), 12)}`)}`;
 }
-/** A short link's row and which of its links, or null when the signature is wrong. */
+/** A short link's workspace, row and which of its links, or null when the signature is wrong. */
 export function readTrack(token: string) {
-  const m = /^([0-9a-z]{1,12})-([0-3])-([A-Za-z0-9_-]{12})$/.exec(token);
-  if (!m || sign(`l${m[1]}-${m[2]}`, 12) !== m[3]) return null;
+  const { workspace, rest } = readBound(token);
+  const m = /^([0-9a-z]{1,12})-([0-3])-([A-Za-z0-9_-]{12})$/.exec(rest);
+  if (!m || !safeEqual(sign(signedText(workspace, `l${m[1]}-${m[2]}`), 12), m[3])) return null;
   const id = parseInt(m[1], 36);
-  return Number.isSafeInteger(id) && id > 0 ? { id, k: Number(m[2]) } : null;
+  return Number.isSafeInteger(id) && id > 0 ? { workspace, id, k: Number(m[2]) } : null;
 }
 
 /** Version A or B of the DM: the winner once there is one, else half and half. */
@@ -569,7 +575,7 @@ async function main(f: Flow, following: boolean | null, before?: string): Promis
   const label = (variant === "b" && a.ab.button_label) || a.button?.label || "Open";
   const links = [a.button?.url ?? "", ...a.choices.map((c) => c.button?.url ?? "")];
   const buttons: Btn[] = [];
-  if (a.button?.url) buttons.push({ type: "web_url", title: label, url: a.track ? trackUrl(f.id, 0) : a.button.url });
+  if (a.button?.url) buttons.push({ type: "web_url", title: label, url: a.track ? await trackUrl(f.id, 0) : a.button.url });
   a.choices.forEach((c, i) => buttons.push({ type: "postback", title: c.label, payload: choicePayload(f.id, i) }));
   const askAfter = a.collect.on && a.collect.when === "after";
   const ask = fill(a.collect.ask || s.defaults.ask_email, f.vars);
@@ -725,7 +731,7 @@ async function onChoiceTap(account: string, from: string, payload: string, s: Dm
   if (!r || !c) return;
   const k = Number(m[2]) + 1;
   try {
-    await step(r.f, { text: fill(c.reply, r.f.vars), buttons: c.button?.url ? [{ type: "web_url", title: c.button.label, url: r.a.track ? trackUrl(e.id, k) : c.button.url }] : [] });
+    await step(r.f, { text: fill(c.reply, r.f.vars), buttons: c.button?.url ? [{ type: "web_url", title: c.button.label, url: r.a.track ? await trackUrl(e.id, k) : c.button.url }] : [] });
     await DB.finish(e.id, { psid: from, note: `Chose "${c.label}"`, reply: `${e.reply ?? ""}\n\n→ ${c.label}: ${fill(c.reply, r.f.vars)}` });
   } catch (err) {
     await DB.finish(e.id, { note: `Choice "${c.label}" not sent: ${(err as Error).message}` });
@@ -775,7 +781,26 @@ type Hook = {
 };
 
 /** Everything one webhook delivery holds: comments (comment rules first), messages, story replies, mentions and taps. */
+/** One delivery from Instagram, which has nobody signed in: each account's entries are answered inside the workspace
+ *  that connected that account (lib/publish/owners.ts), one workspace after another; an account nobody connected is
+ *  left alone. A delivery carries one account almost always, so this is almost always a single turn. */
 export async function onWebhook(body: Hook) {
+  if (body.object !== "instagram" || !Array.isArray(body.entry)) return { handled: 0 };
+  const { ownerOf } = await import("./owners");
+  const groups = new Map<string, NonNullable<Hook["entry"]>>();
+  for (const e of body.entry) {
+    const w = await ownerOf("instagram", String(e.id ?? ""));
+    if (!w) { console.warn("autodm: a delivery for an account no workspace connected"); continue; }
+    groups.set(w, [...(groups.get(w) ?? []), e]);
+  }
+  let handled = 0;
+  for (const [w, entry] of groups) {
+    const out = await asWorkspace(w, () => onWebhookHere({ ...body, entry }));
+    handled += out.handled;
+  }
+  return { handled };
+}
+async function onWebhookHere(body: Hook) {
   const why = new Map<string, string>();
   const out = await handleWebhook(body, why).catch((e) => ({ handled: 0, error: (e as Error).message }));
   await recordDelivery(body, why, out).catch(() => null);

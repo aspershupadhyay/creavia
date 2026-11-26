@@ -1,6 +1,6 @@
 # PRD · Workspaces and accounts (Phase 0)
 
-**Status:** slices 1, 2a and 2b part 1 done (2026-11-26); 2b part 2 (Auto-DM) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
+**Status:** slices 1, 2a and 2b done (2026-11-26); slice 3 (accounts) next · **Plan:** [../phases/phase-0-foundation.md](../phases/phase-0-foundation.md),
 "Workspaces" and "Accounts"
 
 ## 1. Problem
@@ -91,8 +91,14 @@ Sign-ups, invites sent and accepted, workspaces with 2+ members, isolation test 
      cleans each workspace's files against its own rows. Colab, Kaggle and GitHub-run GPU deploys sign in with
      `WORKER_SECRET`, the studio's own: they stay in the first workspace (saying so elsewhere) until workspaces get
      their own worker keys (slice 3).
-   - **2b part 2, Auto-DM:** `workspace_id` on `autodm_events` and `autodm_leads`, the Instagram webhook finding the
-     workspace from the connected account, and Auto-DM's tracked links (`/l/…`) naming theirs.
+   - **2b part 2, Auto-DM (done):** `db/006_autodm_workspaces.sql`. All four Auto-DM tables (events, leads, the
+     inbox's messages and people) carry `workspace_id`, the first workspace's rows backfilled and no default after;
+     their "answered at most once" and inbox keys include it, and every query in `lib/publish/dmstore.ts` is scoped.
+     An Instagram account belongs to one workspace (`account_owners`, `lib/publish/owners.ts`): connecting it in a
+     second is refused until the first disconnects it, and an account connected before is claimed where its connection
+     is stored. The webhook answers each account's entries inside its owner's workspace and leaves accounts nobody
+     connected alone. Tracked links (`/l/…`) name their workspace under the signature (the first workspace's keep their
+     old form) and count the open only there. Tests: `test/autodm-workspaces.test.ts`.
 3. **Accounts:** open sign-up (hosted only, `OPEN_SIGNUP`), invites, roles in the API, password reset (email port),
    Google sign-in, the workspace switcher; the sign-in log and "sign out everywhere" per workspace (shared under
    `auth/` today); a worker key per workspace, so Colab, Kaggle and GPU deploys work in every workspace.

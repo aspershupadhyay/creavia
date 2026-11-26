@@ -62,6 +62,8 @@ export async function getAccount(id: string): Promise<(Account & { tokens: Token
 }
 
 export async function saveAccount(account: Account, tokens: Tokens) {
+  // an Instagram account is one workspace's: its webhook deliveries go there (lib/publish/owners.ts)
+  if (account.network === "instagram") await (await import("./owners")).claimAccount("instagram", account.id);
   await putJson(keyOf(account.network, account.id), { account, sealed: seal(tokens) } satisfies Stored);
   return account;
 }
@@ -78,6 +80,7 @@ export async function removeAccount(id: string) {
   const a = await getAccount(id);
   if (!a) return false;
   await delObjs([keyOf(a.network, a.id)]);
+  if (a.network === "instagram") await (await import("./owners")).releaseAccount("instagram", a.id);
   return a;
 }
 
