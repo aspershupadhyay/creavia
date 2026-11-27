@@ -39,7 +39,8 @@ It signs you in to Cloudflare, makes the bucket, asks for the database, makes bo
 ## 3. Create your account and connect
 
 Open the address (`https://creavia-cloud.<you>.workers.dev`), create your account (the first one founds the studio),
-then in the app: **Connect** → the address → sign in. Teammates: add their emails in the studio's Settings.
+then in the app: **Sign in** → **Use your own studio** → the address → sign in. Teammates: invite them from the
+studio's `/account` page.
 
 ## Extras
 
@@ -51,6 +52,13 @@ then in the app: **Connect** → the address → sign in. Teammates: add their e
 | YouTube and Instagram publishing | PUBLISHING.md (Google Cloud and Meta apps; your own keys) |
 | Faster model downloads on cloud GPUs | `HF_TOKEN` |
 | Updates from your own repo's main | the Cloud workflow deploys when the repo has `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets |
+
+## The address built into the app (for the people releasing Creavia)
+
+Releases of the app sign in to the Creavia service without asking for an address: set the repository variable
+`CREAVIA_SERVICE_URL` (GitHub → Settings → Secrets and variables → Actions → Variables) to the production Worker's
+address before running the Desktop workflow. Unset, the app asks for a studio's address, as self-hosted builds do.
+(docs/town/prd/foundation-app-connects.md)
 
 ## A staging copy (for the people building Creavia)
 

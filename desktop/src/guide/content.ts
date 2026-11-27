@@ -76,7 +76,7 @@ export const CHAPTERS: Chapter[] = [
       { title: "Press Deploy to Cloudflare", text: "Press the button. Sign in with **GitHub** (it copies Creavia into your own account), then with Cloudflare. When it asks for settings, paste:\n• `DATABASE_URL`: the string from step 2\n• `MCP_TOKEN`: the first key from step 3\n• `WORKER_SECRET`: the second key\nThen press **Create and deploy**.", do: [{ label: "Deploy to Cloudflare", href: DEPLOY }],
         mock: { title: "Deploy to Cloudflare", rows: [{ k: "Project name", v: "creavia-cloud" }, { k: "DATABASE_URL", v: "postgresql://…", hi: true }, { k: "MCP_TOKEN", v: "••••••••••••", hi: true }, { k: "WORKER_SECRET", v: "••••••••••••", hi: true }], button: "Create and deploy" } },
       { title: "Wait a few minutes", text: "Cloudflare builds your studio. When it's done, you get an address like `https://creavia-cloud.your-name.workers.dev`. Open it and **create your account**: the first account becomes the owner." },
-      { title: "Connect the app", text: "Back in Creavia, open **Connect**, paste your studio's address, and sign in. Now every page of the studio is in the app too.", do: [{ label: "Open Connect", to: "/login" }] },
+      { title: "Connect the app", text: "Back in Creavia, open **Sign in**, choose **Use your own studio**, paste its address, and sign in. Now every page of the studio is in the app too.", do: [{ label: "Open Connect", to: "/login" }] },
       { title: "Like terminals? One command", text: "Developers can do it all from a terminal instead. It signs in to Cloudflare, makes the storage, asks for the database, makes the keys, and deploys.", code: ["git clone https://github.com/aspershupadhyay/creavia && cd creavia && npm install", "npm run cloud:deploy"] },
     ],
   },
@@ -84,7 +84,7 @@ export const CHAPTERS: Chapter[] = [
     id: "connect", part: "Online", title: "Connect the app to your studio", short: "Sign in", scene: "connect", mins: 1,
     intro: "Connecting puts your online studio inside the app: posts, files, voices, publishing and analytics, all in one window.",
     steps: [
-      { title: "Open Connect", text: "Click **Connect a studio** on the left, or press the button.", do: [{ label: "Open Connect", to: "/login" }] },
+      { title: "Open Connect", text: "Click **Sign in to Creavia** (or **Connect a studio**) on the left, or press the button.", do: [{ label: "Open Connect", to: "/login" }] },
       { title: "Type the address and sign in", text: "Paste your studio's address (it starts with `https://`), then your email and password. New here? Use **New account**." },
       { title: "Your sign-in is safe", text: "Creavia keeps your sign-in in your computer's keychain. The screens never see your password or keys." },
     ],

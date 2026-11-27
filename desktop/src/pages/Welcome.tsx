@@ -73,7 +73,8 @@ function verdict(sys: SystemInfo | null) {
 
 export default function Welcome() {
   const nav = useNavigate();
-  const { refresh } = useConn();
+  const { conn, refresh } = useConn();
+  const service = !!conn?.service; // a Creavia service is built in: "online" is an account, not a studio of your own
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState<1 | -1>(1);
   const [goals, setGoals] = useState<Set<Goal>>(new Set(["voice", "subs"]));
@@ -204,10 +205,16 @@ export default function Welcome() {
 
         {step === 5 && (
           <section>
-            <h1 className="ob-title">Want your studio online?</h1>
-            <p className="ob-lead">It’s optional. Your studio online lets you publish to YouTube and Instagram, see analytics, and work from any browser.</p>
+            <h1 className="ob-title">{service ? "Your Creavia account" : "Want your studio online?"}</h1>
+            <p className="ob-lead">{service
+              ? "It’s optional. With an account you publish to YouTube and Instagram, see analytics, invite your team, and work from any browser."
+              : "It’s optional. Your studio online lets you publish to YouTube and Instagram, see analytics, and work from any browser."}</p>
             <div className="ob-next">
-              {([
+              {(service ? [
+                { id: "connect", Icon: PlugsConnected, t: "Sign in or create an account", s: "Your posts, publishing and team, on any device" },
+                { id: "deploy", Icon: CloudArrowUp, t: "Run my own studio", s: "For self-hosters: a step-by-step guide" },
+                { id: "later", Icon: Cpu, t: "Not now", s: "Use Creavia on this computer" },
+              ] as const : [
                 { id: "connect", Icon: PlugsConnected, t: "I have one", s: "Connect it now with its address" },
                 { id: "deploy", Icon: CloudArrowUp, t: "Show me how", s: "A step-by-step guide, about 10 minutes" },
                 { id: "later", Icon: Cpu, t: "Not now", s: "Use Creavia on this computer" },
@@ -228,7 +235,7 @@ export default function Welcome() {
             <ul className="ob-summary">
               {local && chosen.length > 0 && <li><Check size={14} weight="bold" /> {chosen.length} model{chosen.length > 1 ? "s" : ""} will download ({gb(chosen.reduce((a, m) => a + m.disk_gb * 1e9, 0))})</li>}
               {local && <li><Check size={14} weight="bold" /> Next: turn on the engine on the Engine page</li>}
-              {next === "connect" && <li><Check size={14} weight="bold" /> Then connect your studio</li>}
+              {next === "connect" && <li><Check size={14} weight="bold" /> {service ? "Then sign in or create your account" : "Then connect your studio"}</li>}
               {next === "deploy" && <li><Check size={14} weight="bold" /> Then the guide to put your studio online</li>}
               <li><Check size={14} weight="bold" /> Updates install themselves: no reinstalling</li>
             </ul>

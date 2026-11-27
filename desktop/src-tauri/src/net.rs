@@ -60,6 +60,8 @@ pub struct Connection {
     pub url: Option<String>,
     pub how: Option<String>,
     pub who: Option<String>,
+    /// the Creavia service built into this app, if any (not a secret: it's the address people sign in at)
+    pub service: Option<String>,
 }
 
 /// Studios Creavia must never connect to. The live VoiceBox (aspershupadhyay/voicebox-gpu) is the owner's working
@@ -80,11 +82,17 @@ pub fn connection(store: &Store) -> Connection {
     let s = store.settings();
     // an older connection to a protected studio counts as no connection
     if s.cloud_url.as_deref().is_some_and(is_protected) {
-        return Connection { mode: "none", url: None, how: None, who: None };
+        return Connection { mode: "none", url: None, how: None, who: None, service: service_url() };
     }
     let connected =
         s.cloud_url.is_some() && (store.secret("cloud_cookie").is_some() || store.secret("cloud_token").is_some());
-    Connection { mode: if connected { "cloud" } else { "none" }, url: s.cloud_url, how: s.cloud_how, who: s.cloud_who }
+    Connection {
+        mode: if connected { "cloud" } else { "none" },
+        url: s.cloud_url,
+        how: s.cloud_how,
+        who: s.cloud_who,
+        service: service_url(),
+    }
 }
 
 /// "studio.example.com" or "https://studio.example.com/" → "https://studio.example.com"
@@ -119,13 +127,11 @@ fn jar_string(m: &BTreeMap<String, String>) -> String {
     m.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; ")
 }
 
-/// Keep the cookies the studio sets (its session), drop the ones it clears.
-fn absorb_cookies(store: &Store, headers: &reqwest::header::HeaderMap) {
-    let set: Vec<_> = headers.get_all(reqwest::header::SET_COOKIE).iter().filter_map(|v| v.to_str().ok()).collect();
-    if set.is_empty() {
-        return;
-    }
-    let mut jar = parse_jar(&store.secret("cloud_cookie").unwrap_or_default());
+/// The cookies in `jar` after an answer's Set-Cookie lines: the ones it sets kept, the ones it clears dropped.
+fn merge_cookies<'a>(
+    mut jar: BTreeMap<String, String>,
+    set: impl IntoIterator<Item = &'a str>,
+) -> BTreeMap<String, String> {
     for c in set {
         let mut parts = c.split(';');
         let Some((name, value)) = parts.next().and_then(|kv| kv.trim().split_once('=')) else { continue };
@@ -140,6 +146,20 @@ fn absorb_cookies(store: &Store, headers: &reqwest::header::HeaderMap) {
             jar.insert(name.to_string(), value.to_string());
         }
     }
+    jar
+}
+
+fn set_cookies(headers: &reqwest::header::HeaderMap) -> Vec<&str> {
+    headers.get_all(reqwest::header::SET_COOKIE).iter().filter_map(|v| v.to_str().ok()).collect()
+}
+
+/// Keep the cookies the studio sets (its session), drop the ones it clears.
+fn absorb_cookies(store: &Store, headers: &reqwest::header::HeaderMap) {
+    let set = set_cookies(headers);
+    if set.is_empty() {
+        return;
+    }
+    let jar = merge_cookies(parse_jar(&store.secret("cloud_cookie").unwrap_or_default()), set);
     let joined = jar_string(&jar);
     store.set_secret("cloud_cookie", if jar.is_empty() { None } else { Some(&joined) });
 }
@@ -308,73 +328,131 @@ pub fn cloud_get(state: State<'_, AppState>) -> Connection {
     connection(&state.store)
 }
 
+/// The Creavia service this app signs in to, set when the app is built (`CREAVIA_SERVICE_URL`, from the release
+/// workflow). A build made without one, or with an address that isn't allowed, asks for a studio's address instead
+/// (docs/town/prd/foundation-app-connects.md).
+const SERVICE: Option<&str> = option_env!("CREAVIA_SERVICE_URL");
+
+pub fn service_url() -> Option<String> {
+    service_from(SERVICE)
+}
+
+fn service_from(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim).filter(|s| !s.is_empty()).and_then(|s| normalize_url(s).ok())
+}
+
+/// The studio a sign-in is for: the address the person gave, or the built-in service.
+fn studio_for(url: Option<String>, service: Option<String>) -> Result<String, String> {
+    match url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+        Some(u) => normalize_url(u),
+        None => service.ok_or_else(|| "Enter your studio's address.".to_string()),
+    }
+}
+
+fn host_of(base: &str) -> &str {
+    base.split_once("://").map(|(_, h)| h).unwrap_or(base)
+}
+
+/// The ways in a studio offers, for the sign-in screen. An older studio that doesn't say offers the plainest one.
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default)]
+pub struct Ways {
+    pub google: bool,
+    pub mail: bool,
+    pub open: bool,
+}
+
 #[tauri::command]
-pub async fn cloud_login(
-    url: String,
-    email: String,
-    password: String,
-    name: Option<String>,
+pub async fn cloud_ways(url: Option<String>, state: State<'_, AppState>) -> Result<Ways, String> {
+    let base = studio_for(url, service_url())?;
+    let res = state
+        .net
+        .client
+        .get(format!("{base}/api/login"))
+        .send()
+        .await
+        .map_err(|e| format!("Couldn't reach {}: {}", host_of(&base), why(&e)))?;
+    if !res.status().is_success() {
+        return Ok(Ways::default());
+    }
+    Ok(res.json().await.unwrap_or_default())
+}
+
+/// The only fields the sign-in screen may send to a studio's /api/login; anything else is dropped.
+const AUTH_FIELDS: &[&str] = &["email", "password", "invite", "signup", "resend", "reset", "token"];
+
+fn auth_body(body: serde_json::Value) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let serde_json::Value::Object(map) = body else { return Err("bad sign-in request".into()) };
+    Ok(map.into_iter().filter(|(k, _)| AUTH_FIELDS.contains(&k.as_str())).collect())
+}
+
+/// Who the app is signed in as, after a sign-in that started a session: the studio's answer first, then what was sent.
+fn who_from(sent: &serde_json::Map<String, serde_json::Value>, answer: &serde_json::Value) -> (&'static str, String) {
+    if sent.contains_key("token") {
+        return ("token", "access token".into());
+    }
+    let email = answer
+        .pointer("/user/email")
+        .or_else(|| sent.get("email"))
+        .or_else(|| sent.get("signup").and_then(|s| s.get("email")))
+        .and_then(|e| e.as_str())
+        .unwrap_or("");
+    ("password", email.trim().to_lowercase())
+}
+
+#[derive(Serialize)]
+pub struct AuthAnswer {
+    pub ok: bool,
+    pub status: u16,
+    /// the studio's answer (its message, `verify`, `exists`): never a cookie
+    pub body: serde_json::Value,
+    /// signed in now: a session started, and is kept in Rust
+    pub signed_in: bool,
+    pub connection: Connection,
+}
+
+/// One step of signing in (the shared screen, cloud/creavia/Gate.tsx): posted to the studio's /api/login by Rust.
+/// Only an answer that starts a session replaces the stored one; a refusal or "check your email" changes nothing.
+#[tauri::command]
+pub async fn cloud_auth(
+    url: Option<String>,
+    body: serde_json::Value,
     state: State<'_, AppState>,
-) -> Result<Connection, String> {
-    let base = normalize_url(&url)?;
-    // a name means a new account (the studio lets you in only when your email is on its list, or it's brand new)
-    let body = match name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
-        Some(n) => serde_json::json!({ "signup": { "name": n, "email": email.trim(), "password": password } }),
-        None => serde_json::json!({ "email": email.trim(), "password": password }),
-    };
+) -> Result<AuthAnswer, String> {
+    let base = studio_for(url, service_url())?;
+    let sent = auth_body(body)?;
     let res = state
         .net
         .client
         .post(format!("{base}/api/login"))
-        .json(&body)
+        .json(&sent)
         .send()
         .await
-        .map_err(|e| format!("Couldn't reach {base}: {e}"))?;
+        .map_err(|e| format!("Couldn't reach {}: {}", host_of(&base), why(&e)))?;
     let status = res.status();
-    let headers = res.headers().clone();
-    let body: serde_json::Value = res.json().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(body.get("error").and_then(|e| e.as_str()).unwrap_or("Sign-in failed").to_string());
+    let session = merge_cookies(BTreeMap::new(), set_cookies(res.headers()));
+    let answer: serde_json::Value = res.json().await.unwrap_or_default();
+    let signed_in = status.is_success() && !session.is_empty();
+    if signed_in {
+        // a new sign-in replaces the old one, wherever it was
+        for k in ["cloud_token", "cloud_mcp_key"] {
+            state.store.set_secret(k, None);
+        }
+        state.store.set_secret("cloud_cookie", Some(&jar_string(&session)));
+        let (how, who) = who_from(&sent, &answer);
+        state.store.update(|s| {
+            s.cloud_url = Some(base.clone());
+            s.cloud_how = Some(how.into());
+            s.cloud_who = Some(who);
+        });
     }
-    state.store.set_secret("cloud_token", None);
-    state.store.set_secret("cloud_cookie", None);
-    state.store.set_secret("cloud_mcp_key", None);
-    state.store.update(|s| {
-        s.cloud_url = Some(base.clone());
-        s.cloud_how = Some("password".into());
-        s.cloud_who = Some(email.trim().to_lowercase());
-    });
-    absorb_cookies(&state.store, &headers);
-    if state.store.secret("cloud_cookie").is_none() {
-        return Err("The studio didn't start a session".into());
-    }
-    Ok(connection(&state.store))
-}
-
-#[tauri::command]
-pub async fn cloud_use_token(url: String, token: String, state: State<'_, AppState>) -> Result<Connection, String> {
-    let base = normalize_url(&url)?;
-    let token = token.trim().to_string();
-    let res = state
-        .net
-        .client
-        .get(format!("{base}/api/dash/status"))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .map_err(|e| format!("Couldn't reach {base}: {e}"))?;
-    if res.status().as_u16() == 401 {
-        return Err("The studio didn't accept that token".into());
-    }
-    state.store.set_secret("cloud_cookie", None);
-    state.store.set_secret("cloud_mcp_key", None);
-    state.store.set_secret("cloud_token", Some(&token));
-    state.store.update(|s| {
-        s.cloud_url = Some(base.clone());
-        s.cloud_how = Some("token".into());
-        s.cloud_who = Some("access token".into());
-    });
-    Ok(connection(&state.store))
+    Ok(AuthAnswer {
+        ok: status.is_success(),
+        status: status.as_u16(),
+        body: answer,
+        signed_in,
+        connection: connection(&state.store),
+    })
 }
 
 #[tauri::command]
@@ -528,5 +606,70 @@ mod tests {
     fn plain_http_is_only_for_this_computer() {
         assert!(normalize_url("http://studio.example.com").is_err());
         assert!(normalize_url("not a url at all").is_err());
+    }
+
+    #[test]
+    fn the_built_in_service_is_checked_like_any_address() {
+        assert_eq!(service_from(Some("creavia.example.com")).as_deref(), Some("https://creavia.example.com"));
+        assert_eq!(service_from(None), None);
+        assert_eq!(service_from(Some("  ")), None);
+        // a build pointed at the live VoiceBox, or at plain http, has no service: it asks for an address instead
+        assert_eq!(service_from(Some("https://voiceboxstudio.pages.dev")), None);
+        assert_eq!(service_from(Some("http://creavia.example.com")), None);
+    }
+
+    #[test]
+    fn a_sign_in_goes_to_the_address_given_or_else_the_service() {
+        let service = Some("https://creavia.example.com".to_string());
+        assert_eq!(studio_for(None, service.clone()).unwrap(), "https://creavia.example.com");
+        assert_eq!(studio_for(Some(" ".into()), service.clone()).unwrap(), "https://creavia.example.com");
+        assert_eq!(studio_for(Some("mine.example.org".into()), service.clone()).unwrap(), "https://mine.example.org");
+        assert_eq!(studio_for(None, None), Err("Enter your studio's address.".to_string()));
+        assert_eq!(studio_for(Some("voiceboxstudio.pages.dev".into()), service), Err(PROTECTED_MESSAGE.to_string()));
+    }
+
+    #[test]
+    fn only_sign_in_fields_reach_the_studio() {
+        let sent = auth_body(serde_json::json!({
+            "email": "ana@example.com", "password": "pw", "invite": "i", "signup": {}, "resend": {}, "reset": {},
+            "token": "t", "verify": "not from the app", "next": "/x", "cookie": "a=b"
+        }))
+        .unwrap();
+        let mut keys: Vec<_> = sent.keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, ["email", "invite", "password", "resend", "reset", "signup", "token"]);
+        assert!(auth_body(serde_json::json!("email=ana")).is_err());
+    }
+
+    #[test]
+    fn who_is_signed_in_comes_from_the_answer_first() {
+        let sent = auth_body(serde_json::json!({ "email": "Typed@Example.com", "password": "pw" })).unwrap();
+        let answer = serde_json::json!({ "ok": true, "user": { "email": "ana@example.com" } });
+        assert_eq!(who_from(&sent, &answer), ("password", "ana@example.com".to_string()));
+        assert_eq!(who_from(&sent, &serde_json::json!({})), ("password", "typed@example.com".to_string()));
+        let signup = auth_body(serde_json::json!({ "signup": { "email": "New@Example.com" } })).unwrap();
+        assert_eq!(who_from(&signup, &serde_json::json!({})), ("password", "new@example.com".to_string()));
+        let token = auth_body(serde_json::json!({ "token": "secret" })).unwrap();
+        assert_eq!(who_from(&token, &serde_json::json!({})), ("token", "access token".to_string()));
+    }
+
+    #[test]
+    fn a_cookie_the_answer_clears_is_not_a_session() {
+        let fresh = |set: &[&str]| merge_cookies(BTreeMap::new(), set.iter().copied());
+        assert_eq!(jar_string(&fresh(&["vb_session=abc; Path=/; HttpOnly; Secure"])), "vb_session=abc");
+        assert!(fresh(&["vb_session=; Path=/"]).is_empty());
+        assert!(fresh(&["vb_session=abc; Max-Age=0"]).is_empty());
+        assert!(fresh(&["vb_session=abc; Expires=Thu, 01 Jan 1970 00:00:00 GMT"]).is_empty());
+        assert!(fresh(&[]).is_empty());
+        // merged into a jar: set ones replace, cleared ones go
+        let jar = parse_jar("a=1; vb_session=old");
+        assert_eq!(jar_string(&merge_cookies(jar, ["vb_session=new", "a=; Max-Age=0"])), "vb_session=new");
+    }
+
+    #[test]
+    fn ways_default_to_the_plainest_screen() {
+        assert_eq!(serde_json::from_str::<Ways>("{}").unwrap(), Ways::default());
+        let w: Ways = serde_json::from_str(r#"{"google":true,"mail":true,"open":false,"extra":1}"#).unwrap();
+        assert_eq!(w, Ways { google: true, mail: true, open: false });
     }
 }

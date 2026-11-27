@@ -14,6 +14,8 @@ Shorts → see results. VoiceBox's back-end capabilities behind screens designed
 - [ ] **Files** (Atlas): files, share and upload links, brand kit (first version).
 - [ ] **Ask Vee:** chat that acts through the registry, approvals, Tasks view, memory (first version), the crew line on
       Home.
+- [ ] **Connectors, the first 25, and your own MCP servers:** the catalog page built for about 100 (search, groups),
+      the creator stack first, and "Connect an MCP server" by address and OAuth (docs/town/connectors.md).
 - [ ] **Where AI runs:** own keys (BYOK) and local models; cloud GPU with per-workspace caps.
 - [ ] The agent runtime (durable tasks, budgets, evals) for Juno, Bolt, Tempo, Lens, Atlas; an autonomy setting per
       routine (Suggest · Prepare · Do then tell).

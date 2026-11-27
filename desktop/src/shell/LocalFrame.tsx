@@ -1,6 +1,7 @@
 // The frame before a studio is connected: this computer's pages, and the studio's pages waiting behind "Connect".
 // Once connected, the studio's own frame (cloud/components/Shell.tsx) takes over, with these pages in its sidebar.
 import { Link, useLocation } from "react-router-dom";
+import { useConn } from "./conn";
 import { BookOpenText, ChartLineUp, Cpu, CloudArrowUp, Globe, HardDrives, Lock, MagicWand, Plugs, Sparkle } from "@phosphor-icons/react";
 import { Logo } from "@/components/art";
 
@@ -17,6 +18,7 @@ const LOCKED = ["Home", "Voices", "Posts", "Files", "Voiceover", "Clean-up", "Su
 
 export function LocalFrame({ children }: { children: React.ReactNode }) {
   const path = useLocation().pathname;
+  const { conn } = useConn();
   const on = (h: string) => (h === "/local" ? path === h : path === h || path.startsWith(`${h}/`));
   return (
     <div className="app cr-local">
@@ -45,8 +47,8 @@ export function LocalFrame({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <Link to="/login" className="cr-connect-card">
-          <b>Connect a studio</b>
-          <span>Sign in to your Creavia Cloud for posts, files, publishing and analytics.</span>
+          <b>{conn?.service ? "Sign in to Creavia" : "Connect a studio"}</b>
+          <span>{conn?.service ? "Or create an account" : "Sign in to your Creavia Cloud"} for posts, files, publishing and analytics.</span>
         </Link>
       </aside>
       <div className="main">
@@ -57,7 +59,7 @@ export function LocalFrame({ children }: { children: React.ReactNode }) {
         {LOCAL_NAV.slice(0, 4).map(({ href, name, Icon, mv }) => (
           <Link key={href} to={href} className={on(href) ? "on" : ""} aria-current={on(href) ? "page" : undefined}><Icon size={22} weight="duotone" className="mv" data-move={mv} /><span>{name === "This computer" ? "Computer" : name}</span></Link>
         ))}
-        <Link to="/login"><Globe size={22} weight="duotone" /><span>Connect</span></Link>
+        <Link to="/login"><Globe size={22} weight="duotone" /><span>{conn?.service ? "Sign in" : "Connect"}</span></Link>
       </nav>
     </div>
   );
