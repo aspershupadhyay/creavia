@@ -54,11 +54,14 @@ the doc is the readable view, refreshed from here when a phase or stage changes.
 - **Account screens** (2026-11-26): sign in, sign up, check your email, reset a password and accept an invite on
   `/login`; workspaces, people, roles and invites on `/account`. The first screens in Creavia's own design
   (`cloud/creavia/`), not VoiceBox's.
-- **Next:** "The app connects by itself" (the desktop signs in to the service with these screens' accounts) and the
-  new frame; the owner's setup of
-  staging and retesting live updates run alongside (see
-  [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then Stage 1 to 3 for Phase 0 (strategy page,
-  research plan, PRDs), then the Phase 0 build.
+- **The app signs in by itself** (part 1, 2026-11-27): the Creavia service's address is built into the app, its
+  sign-in is the web's own screen (sent through Rust, the session in the keychain), and your own studio is one click
+  away ([prd/foundation-app-connects.md](prd/foundation-app-connects.md)). Part 2 is Google sign-in in the app.
+- **Integrations target set** (2026-11-27): about 100, plus your own MCP servers, as Town offers
+  ([connectors.md](connectors.md), "The target").
+- **Next:** Google sign-in in the app, then the new frame; the owner's setup of staging, `CREAVIA_SERVICE_URL` and
+  retesting live updates run alongside (see [phases/phase-0-foundation.md](phases/phase-0-foundation.md)), then
+  Stage 1 to 3 for Phase 0 (strategy page, research plan, PRDs), then the Phase 0 build.
 - Update this section whenever a phase or stage moves.
 
 ## Rules that come from this plan

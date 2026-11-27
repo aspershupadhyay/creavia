@@ -295,7 +295,6 @@
         "desktop/src/guide/art.tsx",
         "desktop/src/guide/content.ts",
         "desktop/src/main.tsx",
-        "desktop/src/pages/Connect.tsx",
         "desktop/src/pages/Deploy.tsx",
         "desktop/src/pages/Engine.tsx",
         "desktop/src/pages/Guide.tsx",

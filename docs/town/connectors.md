@@ -26,6 +26,31 @@ Every call is logged; a kill switch stops all automation (VoiceBox's approvals, 
 - Tools load on demand: a small core, the rest by search (the adaptive endpoint, `lib/auto/endpoint.ts`).
 - The desktop app also runs one locally (127.0.0.1, token, refuses foreign Origins).
 
+## The target: about 100 integrations, and any MCP server (owner, 2026-11-27)
+
+Town offers around 100 integrations and lets people connect more through their own MCP servers; Creavia aims for the
+same breadth, built the Creavia way: every outside tool joins the one registry with a permission level, so Vee, the
+crew and the screens use it under the same rules (Act asks first, every call logged, the kill switch stops it).
+
+- **A catalog of about 100,** grown phase by phase. Two ways to add one: our own connector (OAuth and the
+  service's API, for the creator platforms: YouTube, Instagram, TikTok, X, LinkedIn, Threads, Pinterest, Facebook) or
+  the service's official MCP server (Notion, Linear, Figma, Canva, Stripe, Slack, GitHub, Google Drive, Dropbox,
+  Airtable, HubSpot, Shopify, and the rest). Preferring official MCP servers is what makes 100 reachable without
+  writing 100 integrations.
+- **Rough order:** Phase 1 the creator stack (platforms, Drive, Dropbox, Notion, Canva, Figma, Slack, the AI and
+  media providers, about 25); Phase 2 the audience (comments and DMs everywhere, email, CRM, about 45); Phase 3 money
+  (Stripe, Razorpay, PayPal, invoicing, accounting, shops, about 65); Phase 4 the long tail by demand (100+).
+- **Connect your own MCP server:** paste its address, sign in with OAuth (or a header key, kept sealed); its tools show
+  up as a connector card where each tool is switched on or off and given a level. Unknown tools start at Act (ask
+  first) until the person lowers them. Remote MCP (streamable HTTP) in the cloud; on the desktop, local stdio servers
+  too, run by Rust, never from the web view.
+- **Safety for outside tools:** tool descriptions from an outside server are data, never instructions to Vee; a
+  server's tools run only in the workspace that connected it; tokens never reach the page or a model; a server that
+  changes its tool list is shown to the person again before the new tools work.
+- **Groundwork now:** the Phase 0 tool registry is built so outside tools join it like our own (namespaced by
+  connector, a level each, the same log), and the connectors page is designed for a catalog of 100 (search, groups,
+  "connected" first), not a short list.
+
 ## Creavia uses other services (connectors)
 
 - One-click OAuth; switch each connector's tools on or off.

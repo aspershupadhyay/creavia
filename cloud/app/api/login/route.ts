@@ -50,10 +50,16 @@ async function signIn(req: Request, user: Account, invite: string | null, how: s
   return Response.json({ ok: true, user: who, workspace: true });
 }
 
-/** What an invite link invites to (the sign-in page shows it): the workspace's name, the email and the role. Only
- *  whoever holds the link's own token learns this, and a used or expired one says nothing. */
+/** With no invite: the ways in this studio offers (the desktop app's sign-in screen asks; the web page knows them
+ *  already), which its sign-in page shows anyway. With an invite: what the link invites to (the workspace's name, the
+ *  email and the role). Only whoever holds the link's own token learns this, and a used or expired one says nothing. */
 export async function GET(req: Request) {
-  const token = new URL(req.url).searchParams.get("invite") ?? "";
+  const params = new URL(req.url).searchParams;
+  if (!params.has("invite")) {
+    const [{ googleEnabled }, { mailerReady }, { openSignup }] = await Promise.all([import("@/lib/google"), import("@/lib/mailer"), import("@/lib/signin")]);
+    return Response.json({ google: googleEnabled(), mail: mailerReady(), open: openSignup() }, { headers: { "Cache-Control": "no-store" } });
+  }
+  const token = params.get("invite") ?? "";
   await (await import("@/lib/db")).ensureSchema().catch(() => null);
   const inv = await (await import("@/lib/invites")).peekInvite(token).catch(() => null);
   if (!inv) return fail("That invite has expired or been used. Ask for a new one.", 404);

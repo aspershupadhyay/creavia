@@ -28,10 +28,15 @@ export async function revealPath(path: string) {
 }
 
 // ── the studio connection ────────────────────────────────────────────────────────────────────────────────────────
-export type Connection = { mode: "none" | "cloud"; url: string | null; how: "password" | "token" | null; who: string | null };
+/** service: the Creavia service built into this app (null in a build made without one: then you give an address). */
+export type Connection = { mode: "none" | "cloud"; url: string | null; how: "password" | "token" | null; who: string | null; service: string | null };
 export const connection = () => call<Connection>("cloud_get");
-export const signIn = (url: string, email: string, password: string, name?: string) => call<Connection>("cloud_login", { url, email, password, name: name ?? null });
-export const useToken = (url: string, token: string) => call<Connection>("cloud_use_token", { url, token });
+/** The ways in a studio offers (url null: the built-in service). */
+export type Ways = { google: boolean; mail: boolean; open: boolean };
+export const cloudWays = (url: string | null) => call<Ways>("cloud_ways", { url });
+/** One sign-in step, posted by Rust to the studio's /api/login; the session stays in Rust. */
+export type AuthAnswer = { ok: boolean; status: number; body: Record<string, unknown>; signed_in: boolean; connection: Connection };
+export const cloudAuth = (url: string | null, body: object) => call<AuthAnswer>("cloud_auth", { url, body });
 export const signOutCloud = () => call<Connection>("cloud_logout");
 
 // ── this computer ─────────────────────────────────────────────────────────────────────────────────────────────────

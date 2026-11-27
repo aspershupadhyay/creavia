@@ -4,6 +4,12 @@ Every piece of design and product feedback, newest first. It wins over older rul
 pull request as the change. (VoiceBox's own feedback history lives in aspershupadhyay/voicebox-gpu docs/FEEDBACK.md;
 its design rules carried over in DESIGN.md.)
 
+## 2026-11-27: as many integrations as Town, and custom MCP
+
+- **"Town has around 100 integrations and can connect more through custom MCPs; make sure we target the same":** a
+  catalog of about 100, grown by phase and mostly through official MCP servers, plus "Connect your own MCP server",
+  with outside tools under the same registry, levels and log as our own (docs/town/connectors.md, "The target").
+
 ## 2026-11-26: keep the studio's people managing it; open sign-up stays off
 
 - **Promote the people already in the studio, and leave `OPEN_SIGNUP` off in production:** everyone in the first

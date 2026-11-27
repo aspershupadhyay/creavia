@@ -6,7 +6,8 @@ type Ctx = { conn: Connection | null; settings: AppSettings | null; refresh: () 
 const C = createContext<Ctx>({ conn: null, settings: null, refresh: async () => {} });
 export const useConn = () => useContext(C);
 
-const preview: Connection = { mode: "none", url: null, how: null, who: null };
+// outside the app (the web-view previews and tests): as a build with the service built in
+const preview: Connection = { mode: "none", url: null, how: null, who: null, service: "https://creavia.example" };
 const previewSettings: AppSettings = { hf_token_set: false, models_dir: "~/Creavia/engine", mcp_autostart: false, engine_autostart: false, onboarded: false, launch_at_login: false, crash_reports: false, crash_reports_available: false };
 
 export function ConnProvider({ children }: { children: React.ReactNode }) {

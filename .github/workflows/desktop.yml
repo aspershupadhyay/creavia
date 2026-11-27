@@ -130,6 +130,8 @@ jobs:
           # crash reports (src-tauri/src/crash.rs): built in, sent only if the person turns them on; unset = none
           CREAVIA_SENTRY_DSN: ${{ vars.SENTRY_DSN_DESKTOP }}
           CREAVIA_ENGINE_SENTRY_DSN: ${{ vars.SENTRY_DSN_ENGINE }}
+          # the Creavia service the app signs in to (src-tauri/src/net.rs); unset = the app asks for a studio's address
+          CREAVIA_SERVICE_URL: ${{ vars.CREAVIA_SERVICE_URL }}
         with:
           projectPath: desktop
           args: ${{ matrix.args }} ${{ steps.upd.outputs.args }}

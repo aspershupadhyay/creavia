@@ -60,9 +60,15 @@ tool registry, Home, and the slow outside approvals started.
         forgot and reset password, accept an invite (`/login`); workspace and team, with switching, roles, invites and
         removing people (`/account`)
 - [ ] **The app connects by itself:** the service address built in; "Sign in" / "Create account"; self-hosting stays
-      as an advanced option.
+      as an advanced option ([prd/foundation-app-connects.md](../prd/foundation-app-connects.md)).
+  - [x] Part 1: `CREAVIA_SERVICE_URL` built in at release; the app's sign-in is the web's own screen
+        (`cloud/creavia/Gate.tsx`) sent through Rust (`cloud_auth`), with what the studio offers; "Use your own studio"
+        one click away
+  - [ ] Part 2: Google sign-in in the app (the system browser, then a one-time code handed back to the app)
+  - [ ] Owner: the repository variable `CREAVIA_SERVICE_URL` (the creavia-cloud address), then a release
 - [ ] **Tool registry:** every existing action as a named tool with a permission level (read / make / change / act),
-      grouped by house; screens move to call tools.
+      grouped by house; screens move to call tools. Built so outside tools (connectors and
+      custom MCP servers, docs/town/connectors.md, "about 100 integrations") join it the same way.
 - [ ] **The new frame:** sidebar with the ten items, + New, the Vee panel shell, Cmd/Ctrl K, in the Creavia design
       system (Stage 5). The **Ask Vee box** is the front door on Home and the same box as ⌘K (stages/04-ux.md, pattern 1).
 - [ ] **Onboarding, "helpful from hello":** sign up → Meet Vee → connect → a first creator profile from the last 30
